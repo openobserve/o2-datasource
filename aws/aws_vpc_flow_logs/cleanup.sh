@@ -29,6 +29,14 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_header() {
+    echo ""
+    echo "=========================================="
+    echo "$1"
+    echo "=========================================="
+    echo ""
+}
+
 # Function to check if AWS CLI is installed
 check_aws_cli() {
     if ! command -v aws &> /dev/null; then
@@ -52,6 +60,8 @@ list_vpc_flowlog_stacks() {
 
     # Search for stacks with vpc-flowlogs prefix
     stacks=$(aws cloudformation list-stacks \
+        --profile "$AWS_PROFILE" \
+        --region "$REGION" \
         --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
         --query "StackSummaries[?starts_with(StackName, 'vpc-flowlogs-')].{Name:StackName,Status:StackStatus,Created:CreationTime}" \
         --output json)
@@ -141,6 +151,37 @@ delete_stack() {
 
     print_info "Deleting CloudFormation stack: $stack_name"
 
+    # Get VPC ID from stack outputs
+    vpc_id=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' \
+        --output text 2>/dev/null)
+
+    # Get Flow Log ID from stack outputs
+    flow_log_id=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --query 'Stacks[0].Outputs[?OutputKey==`FlowLogId`].OutputValue' \
+        --output text 2>/dev/null)
+
+    # Offer to delete VPC Flow Log configuration
+    if [ -n "$flow_log_id" ] && [ "$flow_log_id" != "None" ]; then
+        echo ""
+        print_info "VPC Flow Log ID: $flow_log_id (VPC: $vpc_id)"
+        read -p "Do you want to delete the VPC Flow Log configuration? (y/N): " -n 1 -r
+        echo
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Deleting VPC Flow Log: $flow_log_id"
+            if aws ec2 delete-flow-logs --flow-log-ids "$flow_log_id" --profile "$AWS_PROFILE" --region "$REGION" &> /dev/null; then
+                print_success "VPC Flow Log deleted"
+            else
+                print_warning "Could not delete VPC Flow Log (may be managed by CloudFormation)"
+            fi
+        else
+            print_info "VPC Flow Log will remain (will be deleted with stack)"
+        fi
+    fi
+
     # Get S3 bucket name before deletion
     s3_bucket=$(aws cloudformation describe-stacks \
         --stack-name "$stack_name" \
@@ -153,11 +194,11 @@ delete_stack() {
     fi
 
     # Delete the stack
-    if aws cloudformation delete-stack --stack-name "$stack_name"; then
+    if aws cloudformation delete-stack --stack-name "$stack_name" --profile "$AWS_PROFILE" --region "$REGION"; then
         print_info "Stack deletion initiated. Waiting for completion..."
 
         # Wait for stack deletion
-        if aws cloudformation wait stack-delete-complete --stack-name "$stack_name" 2>/dev/null; then
+        if aws cloudformation wait stack-delete-complete --stack-name "$stack_name" --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null; then
             print_success "Stack $stack_name deleted successfully!"
         else
             print_warning "Stack deletion may have failed or is taking longer than expected."
@@ -169,46 +210,27 @@ delete_stack() {
     echo ""
 }
 
-# Function to delete specific VPC flow logs
-delete_vpc_flowlogs() {
+# Function to check for orphaned VPC flow logs
+check_orphaned_flowlogs() {
     echo ""
-    print_info "You can also manually delete VPC Flow Logs if needed."
-    read -p "Do you want to search for and delete VPC Flow Logs? (yes/no): " delete_flowlogs
-
-    if [ "$delete_flowlogs" != "yes" ]; then
-        return
-    fi
-
-    echo ""
-    print_info "Searching for VPC Flow Logs..."
+    print_header "Checking for Orphaned VPC Flow Logs"
 
     flow_logs=$(aws ec2 describe-flow-logs \
-        --query 'FlowLogs[*].[FlowLogId,ResourceId,TrafficType,LogDestinationType,LogDestination]' \
-        --output text)
+        --profile "$AWS_PROFILE" \
+        --region "$REGION" \
+        --query 'FlowLogs[?LogDestinationType==`kinesis-data-firehose`].[FlowLogId,ResourceId,TrafficType]' \
+        --output text 2>/dev/null || echo "")
 
-    if [ -z "$flow_logs" ]; then
-        print_info "No VPC Flow Logs found."
-        return
+    if [ -n "$flow_logs" ]; then
+        echo ""
+        echo "Found VPC Flow Logs with Firehose destination:"
+        echo "$flow_logs" | awk '{printf "  - %s (VPC: %s, Traffic: %s)\n", $1, $2, $3}'
+        echo ""
+        print_info "These may be orphaned if their stacks were deleted outside this script"
+        print_info "You can delete them manually using: aws ec2 delete-flow-logs --flow-log-ids <id>"
+    else
+        print_info "No orphaned VPC Flow Logs found"
     fi
-
-    echo ""
-    echo "Found VPC Flow Logs:"
-    echo "=========================================="
-    echo "$flow_logs"
-    echo "=========================================="
-    echo ""
-
-    read -p "Enter Flow Log ID to delete (or 'skip' to continue): " flowlog_id
-
-    if [ "$flowlog_id" != "skip" ] && [ -n "$flowlog_id" ]; then
-        print_info "Deleting Flow Log: $flowlog_id"
-        if aws ec2 delete-flow-logs --flow-log-ids "$flowlog_id"; then
-            print_success "Flow Log deleted successfully!"
-        else
-            print_error "Failed to delete Flow Log"
-        fi
-    fi
-    echo ""
 }
 
 # Function to delete selected stacks
@@ -288,7 +310,13 @@ main() {
     check_aws_credentials
 
     # Get current region
-    REGION=$(aws configure get region)
+    REGION=$(aws configure get region --profile "$AWS_PROFILE" 2>/dev/null || echo "us-east-2")
+
+    # If AWS_REGION env var is set, use it
+    if [ -n "$AWS_REGION" ]; then
+        REGION="$AWS_REGION"
+    fi
+
     print_info "AWS Region: $REGION"
     echo ""
 
@@ -296,8 +324,8 @@ main() {
     list_vpc_flowlog_stacks
     delete_selected_stacks
 
-    # Option to delete orphaned flow logs
-    delete_vpc_flowlogs
+    # Check for orphaned flow logs
+    check_orphaned_flowlogs
 
     echo ""
     print_success "Cleanup process completed!"
