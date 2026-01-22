@@ -1,0 +1,394 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Route53 Query Logs to OpenObserve via CloudWatch Logs, Kinesis Data Streams, and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'route53-query-logs'
+    Description: 'Name for the OpenObserve stream'
+
+  HostedZoneId:
+    Type: String
+    Description: 'Route53 Hosted Zone ID to capture query logs from'
+    AllowedPattern: '^Z[A-Z0-9]+$'
+    ConstraintDescription: 'Must be a valid Route53 Hosted Zone ID (starts with Z)'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # CloudWatch Log Group for Route53 Query Logs
+  # CloudWatch Log Group for Route53
+  Route53LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/route53/${HostedZoneId}'
+      RetentionInDays: 7
+
+  # Kinesis Data Stream for Route53 Logs
+  Route53LogStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-route53-logs'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt Route53LogStream.Arn
+
+  # Lambda Function for Route53 Log Transformation
+  Route53LogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-route53-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import gzip
+          from datetime import datetime
+
+          def parse_route53_log(message):
+              """
+              Parse Route53 query log format (space-delimited).
+              Format: version account-id hosted-zone-id query-timestamp query-name query-type response-code protocol edge-location resolver-ip edns-client-subnet
+              Example: 1.0 123456789012 Z1234567890ABC 2023-01-15T12:34:56.789Z example.com A NOERROR TCP IAD12-C1 192.0.2.1 -
+              """
+              try:
+                  parts = message.strip().split()
+
+                  if len(parts) < 10:
+                      # Not a valid Route53 log line, return as-is
+                      return {
+                          'raw_message': message,
+                          'parse_error': 'Insufficient fields'
+                      }
+
+                  parsed = {
+                      'version': parts[0],
+                      'account_id': parts[1],
+                      'hosted_zone_id': parts[2],
+                      'query_timestamp': parts[3],
+                      'query_name': parts[4],
+                      'query_type': parts[5],
+                      'response_code': parts[6],
+                      'protocol': parts[7],
+                      'edge_location': parts[8],
+                      'resolver_ip': parts[9],
+                      'edns_client_subnet': parts[10] if len(parts) > 10 else '-',
+                  }
+
+                  # Add additional analytics fields
+                  parsed['is_error'] = parsed['response_code'] not in ['NOERROR']
+                  parsed['is_tcp'] = parsed['protocol'] == 'TCP'
+                  parsed['has_edns'] = parsed['edns_client_subnet'] != '-'
+
+                  # Extract domain info
+                  if '.' in parsed['query_name']:
+                      domain_parts = parsed['query_name'].split('.')
+                      if len(domain_parts) >= 2:
+                          parsed['apex_domain'] = '.'.join(domain_parts[-2:])
+                      if len(domain_parts) >= 3:
+                          parsed['subdomain'] = '.'.join(domain_parts[:-2])
+
+                  # Categorize query type
+                  common_types = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'PTR', 'SRV']
+                  parsed['query_type_category'] = 'common' if parsed['query_type'] in common_types else 'other'
+
+                  return parsed
+
+              except Exception as e:
+                  return {
+                      'raw_message': message,
+                      'parse_error': str(e)
+                  }
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  # Decode the data
+                  payload = base64.b64decode(record['data'])
+
+                  try:
+                      # Decompress the gzip data from CloudWatch Logs
+                      decompressed = gzip.decompress(payload)
+                      log_data = json.loads(decompressed)
+
+                      # CloudWatch Logs format
+                      log_group = log_data.get('logGroup', '')
+                      log_stream = log_data.get('logStream', '')
+                      log_events = log_data.get('logEvents', [])
+
+                      # Transform each log event
+                      transformed_logs = []
+                      for event in log_events:
+                          message = event.get('message', '')
+
+                          # Parse Route53 log format
+                          parsed = parse_route53_log(message)
+
+                          # Create transformed log entry
+                          transformed = {
+                              'timestamp': event.get('timestamp', int(datetime.utcnow().timestamp() * 1000)),
+                              'logGroup': log_group,
+                              'logStream': log_stream,
+                              'id': event.get('id', ''),
+                              'service': 'route53',
+                              'log_type': 'query_log',
+                          }
+
+                          # Merge parsed data
+                          transformed.update(parsed)
+
+                          transformed_logs.append(transformed)
+
+                      # Create output with all log events
+                      output_data = '\n'.join([json.dumps(log) for log in transformed_logs]) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt Route53LogStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt Route53LogTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt Route53LogStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt Route53LogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for CloudWatch Logs to write to Kinesis
+  CloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudWatchLogsKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt Route53LogStream.Arn
+
+  # CloudWatch Logs Subscription Filter
+  LogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - Route53LogStream
+      - CloudWatchLogsRole
+      - Route53LogGroup
+    Properties:
+      LogGroupName: !Ref Route53LogGroup
+      FilterPattern: ''  # Stream all Route53 query logs
+      DestinationArn: !GetAtt Route53LogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+Outputs:
+  HostedZoneId:
+    Description: 'Route53 Hosted Zone ID'
+    Value: !Ref HostedZoneId
+
+  LogGroupName:
+    Description: 'CloudWatch Log Group Name for Route53'
+    Value: !Ref Route53LogGroup
+
+  Route53LogGroupArn:
+    Description: 'Route53 CloudWatch Log Group ARN (use this for query logging config)'
+    Value: !GetAtt Route53LogGroup.Arn
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref Route53LogStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt Route53LogStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      CloudWatch Logs streaming is ready. Enable Route53 query logging with:
+      aws route53 create-query-logging-config --hosted-zone-id ${HostedZoneId} --cloudwatch-logs-log-group-arn ${Route53LogGroup.Arn}

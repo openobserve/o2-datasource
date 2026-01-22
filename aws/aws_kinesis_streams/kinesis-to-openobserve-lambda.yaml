@@ -1,0 +1,448 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Kinesis Data Stream to OpenObserve via Lambda (Custom Processing) - Advanced transformations with Lambda consumer'
+
+Parameters:
+  KinesisStreamArn:
+    Type: String
+    Description: 'ARN of the existing Kinesis Data Stream to consume from'
+    AllowedPattern: 'arn:aws:kinesis:[a-z0-9-]+:[0-9]+:stream/.+'
+
+  StreamName:
+    Type: String
+    Description: 'Name for the OpenObserve stream (organization/stream format recommended)'
+    Default: 'default/kinesis_logs'
+
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://your-instance.openobserve.ai)'
+    AllowedPattern: 'https?://.*'
+
+  OpenObserveAccessKey:
+    Type: String
+    Description: 'OpenObserve access key (base64 encoded user:password)'
+    NoEcho: true
+
+  BatchSize:
+    Type: Number
+    Description: 'Number of records to process in each Lambda invocation'
+    Default: 100
+    MinValue: 1
+    MaxValue: 10000
+
+  ParallelizationFactor:
+    Type: Number
+    Description: 'Number of concurrent batches per shard'
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+
+  MaximumBatchingWindowInSeconds:
+    Type: Number
+    Description: 'Maximum time to wait for batch to fill'
+    Default: 10
+    MinValue: 0
+    MaxValue: 300
+
+  BufferIntervalSeconds:
+    Type: Number
+    Description: 'Firehose buffer interval in seconds'
+    Default: 60
+    MinValue: 60
+    MaxValue: 900
+
+  BufferSizeMB:
+    Type: Number
+    Description: 'Firehose buffer size in MB'
+    Default: 5
+    MinValue: 1
+    MaxValue: 128
+
+Resources:
+  # S3 Backup Bucket
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-backup-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 7
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Lambda function to consume from Kinesis and send to Firehose
+  ConsumerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-consumer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt ConsumerLambdaRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          FIREHOSE_STREAM_NAME: !Ref DeliveryStream
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import os
+          import boto3
+          from datetime import datetime
+
+          firehose = boto3.client('firehose')
+          FIREHOSE_STREAM = os.environ['FIREHOSE_STREAM_NAME']
+
+          def lambda_handler(event, context):
+              """
+              Process Kinesis records and send to Firehose.
+              Supports custom transformations and enrichment.
+              """
+              records_to_send = []
+              total_records = len(event.get('Records', []))
+
+              print(f"Processing {total_records} records from Kinesis")
+
+              for record in event['Records']:
+                  try:
+                      # Decode Kinesis data
+                      payload = base64.b64decode(record['kinesis']['data']).decode('utf-8')
+
+                      # Try to parse as JSON
+                      try:
+                          data = json.loads(payload)
+                      except json.JSONDecodeError:
+                          # If not JSON, wrap in a message field
+                          data = {'message': payload}
+
+                      # Enrich with Kinesis metadata
+                      enriched_data = {
+                          **data,
+                          '_kinesis_metadata': {
+                              'partition_key': record['kinesis'].get('partitionKey', ''),
+                              'sequence_number': record['kinesis'].get('sequenceNumber', ''),
+                              'approximate_arrival': record['kinesis'].get('approximateArrivalTimestamp', 0),
+                              'event_source': record.get('eventSource', ''),
+                              'event_version': record.get('eventVersion', ''),
+                              'event_id': record.get('eventID', ''),
+                              'stream_arn': record.get('eventSourceARN', '')
+                          },
+                          '_processed_at': datetime.utcnow().isoformat() + 'Z'
+                      }
+
+                      # Custom transformation logic can be added here
+                      # Example: Filter, aggregate, enrich with external data, etc.
+
+                      # Convert to newline-delimited JSON for OpenObserve
+                      json_line = json.dumps(enriched_data) + '\n'
+
+                      records_to_send.append({
+                          'Data': json_line.encode('utf-8')
+                      })
+
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Optionally send failed records to DLQ or continue
+                      continue
+
+              # Send to Firehose in batches (max 500 records per request)
+              if records_to_send:
+                  batch_size = 500
+                  for i in range(0, len(records_to_send), batch_size):
+                      batch = records_to_send[i:i + batch_size]
+                      try:
+                          response = firehose.put_record_batch(
+                              DeliveryStreamName=FIREHOSE_STREAM,
+                              Records=batch
+                          )
+                          failed_count = response['FailedPutCount']
+                          if failed_count > 0:
+                              print(f"Failed to send {failed_count} records to Firehose")
+                      except Exception as e:
+                          print(f"Error sending batch to Firehose: {str(e)}")
+                          raise
+
+              print(f"Successfully processed {len(records_to_send)} records")
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'processed': len(records_to_send),
+                      'total': total_records
+                  })
+              }
+
+  ConsumerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-consumer-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole
+      Policies:
+        - PolicyName: FirehoseWritePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                  - firehose:DescribeDeliveryStream
+                Resource: !GetAtt DeliveryStream.Arn
+        - PolicyName: KinesisReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:ListShards
+                  - kinesis:ListStreams
+                  - kinesis:SubscribeToShard
+                Resource: !Ref KinesisStreamArn
+
+  # Event Source Mapping from Kinesis to Lambda
+  KinesisEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Ref KinesisStreamArn
+      FunctionName: !Ref ConsumerFunction
+      StartingPosition: LATEST
+      BatchSize: !Ref BatchSize
+      ParallelizationFactor: !Ref ParallelizationFactor
+      MaximumBatchingWindowInSeconds: !Ref MaximumBatchingWindowInSeconds
+      BisectBatchOnFunctionError: true
+      MaximumRetryAttempts: 3
+      MaximumRecordAgeInSeconds: 604800  # 7 days
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt FailedRecordsQueue.Arn
+
+  # DLQ for failed records
+  FailedRecordsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 300
+
+  FailedRecordsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref FailedRecordsQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt FailedRecordsQueue.Arn
+
+  # Firehose Delivery Stream Role
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-firehose-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: S3BackupPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt BackupBucket.Arn
+                  - !Sub '${BackupBucket.Arn}/*'
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/${AWS::StackName}:*'
+
+  # Kinesis Firehose Delivery Stream
+  DeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-firehose'
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Sub '${OpenObserveEndpoint}/api/${StreamName}/_json'
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        BufferingHints:
+          IntervalInSeconds: !Ref BufferIntervalSeconds
+          SizeInMBs: !Ref BufferSizeMB
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupBucket.Arn
+          RoleARN: !GetAtt FirehoseRole.Arn
+          Prefix: 'failed/'
+          ErrorOutputPrefix: 'error/'
+          BufferingHints:
+            IntervalInSeconds: 300
+            SizeInMBs: 5
+          CompressionFormat: GZIP
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseLogGroup
+          LogStreamName: HttpEndpointDelivery
+
+  # CloudWatch Log Group for Firehose
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/kinesisfirehose/${AWS::StackName}'
+      RetentionInDays: 7
+
+  # CloudWatch Log Group for Lambda
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-consumer'
+      RetentionInDays: 7
+
+  # CloudWatch Alarms
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-lambda-errors'
+      AlarmDescription: 'Lambda function is experiencing errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ConsumerFunction
+
+  IteratorAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-iterator-age-high'
+      AlarmDescription: 'Lambda consumer is falling behind the Kinesis stream'
+      MetricName: IteratorAge
+      Namespace: AWS/Lambda
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 60000  # 1 minute
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ConsumerFunction
+
+  DLQMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-messages'
+      AlarmDescription: 'Failed records in DLQ'
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FailedRecordsQueue.QueueName
+
+Outputs:
+  ConsumerFunctionName:
+    Description: 'Name of the Lambda consumer function'
+    Value: !Ref ConsumerFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-function-name'
+
+  ConsumerFunctionArn:
+    Description: 'ARN of the Lambda consumer function'
+    Value: !GetAtt ConsumerFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-function-arn'
+
+  DeliveryStreamName:
+    Description: 'Name of the Firehose delivery stream'
+    Value: !Ref DeliveryStream
+    Export:
+      Name: !Sub '${AWS::StackName}-stream-name'
+
+  DeliveryStreamArn:
+    Description: 'ARN of the Firehose delivery stream'
+    Value: !GetAtt DeliveryStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-stream-arn'
+
+  BackupBucketName:
+    Description: 'S3 bucket for failed record backups'
+    Value: !Ref BackupBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-backup-bucket'
+
+  DLQUrl:
+    Description: 'URL of the DLQ for failed records'
+    Value: !Ref FailedRecordsQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-dlq-url'
+
+  EventSourceMappingId:
+    Description: 'ID of the Kinesis event source mapping'
+    Value: !Ref KinesisEventSourceMapping
+    Export:
+      Name: !Sub '${AWS::StackName}-event-source-mapping'
+
+  SourceKinesisStream:
+    Description: 'Source Kinesis Data Stream ARN'
+    Value: !Ref KinesisStreamArn
+
+  MonitoringDashboard:
+    Description: 'CloudWatch dashboard URL'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}'

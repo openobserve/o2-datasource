@@ -1,0 +1,339 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Kinesis Data Stream to OpenObserve via Firehose (Direct) - Consumes from existing Kinesis stream and forwards to OpenObserve'
+
+Parameters:
+  KinesisStreamArn:
+    Type: String
+    Description: 'ARN of the existing Kinesis Data Stream to consume from'
+    AllowedPattern: 'arn:aws:kinesis:[a-z0-9-]+:[0-9]+:stream/.+'
+
+  StreamName:
+    Type: String
+    Description: 'Name for the OpenObserve stream (organization/stream format recommended)'
+    Default: 'default/kinesis_logs'
+
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://your-instance.openobserve.ai)'
+    AllowedPattern: 'https?://.*'
+
+  OpenObserveAccessKey:
+    Type: String
+    Description: 'OpenObserve access key (base64 encoded user:password)'
+    NoEcho: true
+
+  EnableTransformation:
+    Type: String
+    Description: 'Enable Lambda transformation for data processing'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  BufferIntervalSeconds:
+    Type: Number
+    Description: 'Buffer interval in seconds before delivering to OpenObserve'
+    Default: 60
+    MinValue: 60
+    MaxValue: 900
+
+  BufferSizeMB:
+    Type: Number
+    Description: 'Buffer size in MB before delivering to OpenObserve'
+    Default: 5
+    MinValue: 1
+    MaxValue: 128
+
+Conditions:
+  TransformationEnabled: !Equals [!Ref EnableTransformation, 'true']
+
+Resources:
+  # S3 Backup Bucket for failed records
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-backup-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 7
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Lambda function for optional transformation
+  TransformationFunction:
+    Type: AWS::Lambda::Function
+    Condition: TransformationEnabled
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt TransformationLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+
+          def lambda_handler(event, context):
+              """
+              Transform Kinesis records before sending to OpenObserve.
+              Modify this function based on your data format needs.
+              """
+              output = []
+
+              for record in event['records']:
+                  try:
+                      # Decode the data
+                      payload = base64.b64decode(record['data']).decode('utf-8')
+
+                      # Parse JSON if applicable
+                      try:
+                          data = json.loads(payload)
+                      except json.JSONDecodeError:
+                          # Not JSON, treat as plain text
+                          data = {'message': payload}
+
+                      # Add metadata
+                      data['_timestamp'] = record.get('approximateArrivalTimestamp', 0)
+                      data['_kinesis_sequence'] = record.get('kinesisRecordMetadata', {}).get('sequenceNumber', '')
+                      data['_kinesis_partition'] = record.get('kinesisRecordMetadata', {}).get('partitionKey', '')
+
+                      # Encode back to JSON
+                      transformed = json.dumps(data) + '\n'
+
+                      output.append({
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(transformed.encode('utf-8')).decode('utf-8')
+                      })
+                  except Exception as e:
+                      print(f"Error processing record {record['recordId']}: {str(e)}")
+                      output.append({
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      })
+
+              return {'records': output}
+
+  TransformationLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: TransformationEnabled
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-transformer-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: FirehoseInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-transformer:*'
+
+  # Firehose Delivery Stream Role
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-firehose-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: KinesisReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:GetShardIterator
+                  - kinesis:GetRecords
+                  - kinesis:ListShards
+                Resource: !Ref KinesisStreamArn
+        - PolicyName: S3BackupPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt BackupBucket.Arn
+                  - !Sub '${BackupBucket.Arn}/*'
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:GetFunctionConfiguration
+                Resource: !If
+                  - TransformationEnabled
+                  - !GetAtt TransformationFunction.Arn
+                  - !Ref AWS::NoValue
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/${AWS::StackName}:*'
+
+  # Kinesis Firehose Delivery Stream
+  DeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Ref AWS::StackName
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !Ref KinesisStreamArn
+        RoleARN: !GetAtt FirehoseRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Sub '${OpenObserveEndpoint}/api/${StreamName}/_json'
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        BufferingHints:
+          IntervalInSeconds: !Ref BufferIntervalSeconds
+          SizeInMBs: !Ref BufferSizeMB
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupBucket.Arn
+          RoleARN: !GetAtt FirehoseRole.Arn
+          Prefix: 'failed/'
+          ErrorOutputPrefix: 'error/'
+          BufferingHints:
+            IntervalInSeconds: 300
+            SizeInMBs: 5
+          CompressionFormat: GZIP
+        ProcessingConfiguration: !If
+          - TransformationEnabled
+          - Enabled: true
+            Processors:
+              - Type: Lambda
+                Parameters:
+                  - ParameterName: LambdaArn
+                    ParameterValue: !GetAtt TransformationFunction.Arn
+                  - ParameterName: BufferSizeInMBs
+                    ParameterValue: '3'
+                  - ParameterName: BufferIntervalInSeconds
+                    ParameterValue: '60'
+          - !Ref AWS::NoValue
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseLogGroup
+          LogStreamName: HttpEndpointDelivery
+
+  # CloudWatch Log Group for Firehose
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/kinesisfirehose/${AWS::StackName}'
+      RetentionInDays: 7
+
+  # CloudWatch Alarms for monitoring
+  IteratorAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-iterator-age-high'
+      AlarmDescription: 'Firehose consumer is falling behind the Kinesis stream'
+      MetricName: IteratorAgeMilliseconds
+      Namespace: AWS/Kinesis
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 60000  # 1 minute
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: StreamName
+          Value: !Select [1, !Split ['/', !Select [5, !Split [':', !Ref KinesisStreamArn]]]]
+
+  DeliveryFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-delivery-failures'
+      AlarmDescription: 'Firehose is experiencing delivery failures to OpenObserve'
+      MetricName: DeliveryToHttpEndpoint.DataFreshness
+      Namespace: AWS/Firehose
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 900000  # 15 minutes
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: DeliveryStreamName
+          Value: !Ref DeliveryStream
+
+Outputs:
+  DeliveryStreamName:
+    Description: 'Name of the Firehose delivery stream'
+    Value: !Ref DeliveryStream
+    Export:
+      Name: !Sub '${AWS::StackName}-stream-name'
+
+  DeliveryStreamArn:
+    Description: 'ARN of the Firehose delivery stream'
+    Value: !GetAtt DeliveryStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-stream-arn'
+
+  BackupBucketName:
+    Description: 'S3 bucket for failed record backups'
+    Value: !Ref BackupBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-backup-bucket'
+
+  SourceKinesisStream:
+    Description: 'Source Kinesis Data Stream ARN'
+    Value: !Ref KinesisStreamArn
+
+  TransformationFunctionArn:
+    Description: 'Lambda transformation function ARN (if enabled)'
+    Value: !If
+      - TransformationEnabled
+      - !GetAtt TransformationFunction.Arn
+      - 'Not enabled'
+
+  MonitoringDashboard:
+    Description: 'CloudWatch dashboard URL'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}'

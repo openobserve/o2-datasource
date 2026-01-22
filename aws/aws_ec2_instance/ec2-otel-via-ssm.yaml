@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy OpenTelemetry Collector to existing EC2 instances via SSM'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint (e.g., https://api.openobserve.ai/api/your-org/default/)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamNameLogs:
+    Type: String
+    Default: 'ec2-otel-logs'
+    Description: 'OpenObserve stream name for logs'
+
+  StreamNameMetrics:
+    Type: String
+    Default: 'ec2-otel-metrics'
+    Description: 'OpenObserve stream name for metrics'
+
+  TargetTagKey:
+    Type: String
+    Default: 'monitoring'
+    Description: 'EC2 tag key to identify instances'
+
+  TargetTagValue:
+    Type: String
+    Default: 'enabled'
+    Description: 'EC2 tag value to identify instances'
+
+  CollectionInterval:
+    Type: Number
+    Default: 30
+    Description: 'Metrics collection interval in seconds'
+
+Resources:
+  # SSM Document for OpenTelemetry Installation
+  OtelInstallDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Name: !Sub '${AWS::StackName}-install-otel'
+      DocumentType: Command
+      DocumentFormat: YAML
+      Content:
+        schemaVersion: '2.2'
+        description: 'Install and configure OpenTelemetry Collector'
+        parameters:
+          openObserveEndpoint:
+            type: String
+            description: 'OpenObserve endpoint URL'
+          authHeader:
+            type: String
+            description: 'Base64 encoded credentials'
+          streamLogs:
+            type: String
+            description: 'Stream name for logs'
+          streamMetrics:
+            type: String
+            description: 'Stream name for metrics'
+          collectionInterval:
+            type: String
+            description: 'Collection interval in seconds'
+        mainSteps:
+          - action: 'aws:runShellScript'
+            name: 'installOtel'
+            inputs:
+              runCommand:
+                - |
+                  #!/bin/bash
+                  set -e
+
+                  echo "Installing OpenTelemetry Collector..."
+
+                  # Download and install
+                  cd /tmp
+                  wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.94.0/otelcol_0.94.0_linux_amd64.tar.gz
+                  tar -xzf otelcol_0.94.0_linux_amd64.tar.gz
+                  sudo mv otelcol /usr/local/bin/
+                  sudo chmod +x /usr/local/bin/otelcol
+
+                  # Create directories
+                  sudo mkdir -p /etc/otelcol
+                  sudo mkdir -p /var/log/otelcol
+
+                  # Create configuration
+                  sudo tee /etc/otelcol/config.yaml > /dev/null <<EOF
+                  receivers:
+                    hostmetrics:
+                      collection_interval: {{ collectionInterval }}s
+                      scrapers:
+                        cpu:
+                        memory:
+                        disk:
+                        filesystem:
+                        load:
+                        network:
+                        paging:
+                        processes:
+
+                    filelog:
+                      include:
+                        - /var/log/*.log
+                        - /var/log/messages
+                        - /var/log/secure
+                        - /var/log/syslog
+                      include_file_path: true
+                      include_file_name: true
+
+                  processors:
+                    batch:
+                      timeout: 10s
+                      send_batch_size: 1024
+
+                    resourcedetection:
+                      detectors: [env, ec2, system]
+                      timeout: 5s
+
+                    resource:
+                      attributes:
+                        - key: service.name
+                          value: "ec2-monitoring"
+                          action: upsert
+
+                  exporters:
+                    otlphttp:
+                      endpoint: "{{ openObserveEndpoint }}v1/logs"
+                      headers:
+                        Authorization: "Basic {{ authHeader }}"
+                        stream-name: "{{ streamLogs }}"
+                      compression: gzip
+
+                    otlphttp/metrics:
+                      endpoint: "{{ openObserveEndpoint }}v1/metrics"
+                      headers:
+                        Authorization: "Basic {{ authHeader }}"
+                        stream-name: "{{ streamMetrics }}"
+                      compression: gzip
+
+                  service:
+                    pipelines:
+                      logs:
+                        receivers: [filelog]
+                        processors: [batch, resourcedetection, resource]
+                        exporters: [otlphttp]
+
+                      metrics:
+                        receivers: [hostmetrics]
+                        processors: [batch, resourcedetection, resource]
+                        exporters: [otlphttp/metrics]
+                  EOF
+
+                  # Create systemd service
+                  sudo tee /etc/systemd/system/otelcol.service > /dev/null <<EOF
+                  [Unit]
+                  Description=OpenTelemetry Collector
+                  After=network.target
+
+                  [Service]
+                  Type=simple
+                  User=root
+                  ExecStart=/usr/local/bin/otelcol --config=/etc/otelcol/config.yaml
+                  Restart=on-failure
+                  RestartSec=5s
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                  # Start service
+                  sudo systemctl daemon-reload
+                  sudo systemctl enable otelcol
+                  sudo systemctl start otelcol
+
+                  # Verify
+                  sleep 2
+                  if sudo systemctl is-active --quiet otelcol; then
+                    echo "OpenTelemetry Collector installed and running successfully!"
+                  else
+                    echo "ERROR: OpenTelemetry Collector failed to start"
+                    sudo journalctl -u otelcol -n 20
+                    exit 1
+                  fi
+
+                  # Cleanup
+                  rm -f /tmp/otelcol_0.94.0_linux_amd64.tar.gz
+
+  # SSM Association to install on tagged instances
+  OtelAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: !Ref OtelInstallDocument
+      AssociationName: !Sub '${AWS::StackName}-otel-installation'
+      Targets:
+        - Key: !Sub 'tag:${TargetTagKey}'
+          Values:
+            - !Ref TargetTagValue
+      Parameters:
+        openObserveEndpoint:
+          - !Ref OpenObserveEndpoint
+        authHeader:
+          - !Ref OpenObserveAccessKey
+        streamLogs:
+          - !Ref StreamNameLogs
+        streamMetrics:
+          - !Ref StreamNameMetrics
+        collectionInterval:
+          - !Ref CollectionInterval
+      ScheduleExpression: 'rate(30 days)'
+      ComplianceSeverity: MEDIUM
+
+Outputs:
+  SSMDocumentName:
+    Description: 'SSM Document Name'
+    Value: !Ref OtelInstallDocument
+
+  SSMAssociationId:
+    Description: 'SSM Association ID'
+    Value: !Ref OtelAssociation
+
+  TargetTag:
+    Description: 'Target Instance Tag'
+    Value: !Sub '${TargetTagKey}:${TargetTagValue}'
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      1. Tag your EC2 instances with: ${TargetTagKey}=${TargetTagValue}
+         Example: aws ec2 create-tags --resources i-0c997328b573d7d30 --tags Key=${TargetTagKey},Value=${TargetTagValue}
+
+      2. Ensure instances have:
+         - SSM agent installed and running
+         - IAM role with policy: AmazonSSMManagedInstanceCore
+
+      3. Run association manually:
+         aws ssm start-associations-once --association-ids ${OtelAssociation}
+
+      4. Check installation status:
+         aws ssm describe-instance-associations-status --instance-id <instance-id>
+
+      5. Verify on instance:
+         sudo systemctl status otelcol
+         sudo journalctl -u otelcol -f
+
+      6. View data in OpenObserve:
+         - Logs stream: ${StreamNameLogs}
+         - Metrics stream: ${StreamNameMetrics}

@@ -1,0 +1,433 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC Flow Logs to OpenObserve via CloudWatch Logs, Kinesis, and Firehose (Alternative)'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'vpc-flow-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  VpcId:
+    Type: String
+    Description: 'VPC ID to capture flow logs from (e.g., vpc-xxxxx)'
+
+  TrafficType:
+    Type: String
+    Default: 'ALL'
+    AllowedValues:
+      - ALL
+      - ACCEPT
+      - REJECT
+    Description: 'Type of traffic to log (ALL, ACCEPT, or REJECT)'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  CloudWatchLogGroupRetention:
+    Type: Number
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+    Description: 'CloudWatch Logs retention in days'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # CloudWatch Log Group for VPC Flow Logs
+  FlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/vpc/flowlogs/${AWS::StackName}'
+      RetentionInDays: !Ref CloudWatchLogGroupRetention
+
+  # IAM Role for VPC Flow Logs to CloudWatch
+  FlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FlowLogsToCloudWatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                Resource: !GetAtt FlowLogsLogGroup.Arn
+
+  # Kinesis Data Stream for Flow Logs
+  FlowLogsKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-flowlogs-stream'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt FlowLogsKinesisStream.Arn
+
+  # Lambda Function for Flow Log Transformation
+  FlowLogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-flowlog-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import gzip
+          from datetime import datetime
+
+          # Protocol number to name mapping (common protocols)
+          PROTOCOL_MAP = {
+              1: 'ICMP',
+              6: 'TCP',
+              17: 'UDP',
+              47: 'GRE',
+              50: 'ESP',
+              51: 'AH',
+              58: 'ICMPv6',
+              89: 'OSPF',
+              132: 'SCTP'
+          }
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  try:
+                      # Decode the data
+                      payload = base64.b64decode(record['data'])
+
+                      # Decompress the gzip data from CloudWatch Logs
+                      decompressed = gzip.decompress(payload)
+                      log_data = json.loads(decompressed)
+
+                      # CloudWatch Logs format
+                      log_group = log_data.get('logGroup', '')
+                      log_stream = log_data.get('logStream', '')
+                      log_events = log_data.get('logEvents', [])
+
+                      # Transform each log event
+                      transformed_logs = []
+                      for event in log_events:
+                          message = event.get('message', '').strip()
+
+                          # Skip header lines
+                          if message.startswith('version') or message.startswith('account-id'):
+                              continue
+
+                          # Parse VPC Flow Log format
+                          fields = message.split()
+
+                          if len(fields) >= 14:
+                              protocol_num = int(fields[7])
+
+                              # Create structured log entry with protocol enrichment
+                              transformed = {
+                                  'timestamp': event.get('timestamp', int(datetime.utcnow().timestamp() * 1000)),
+                                  'version': int(fields[0]),
+                                  'account_id': fields[1],
+                                  'interface_id': fields[2],
+                                  'srcaddr': fields[3],
+                                  'dstaddr': fields[4],
+                                  'srcport': int(fields[5]) if fields[5] != '-' else 0,
+                                  'dstport': int(fields[6]) if fields[6] != '-' else 0,
+                                  'protocol': protocol_num,
+                                  'protocol_name': PROTOCOL_MAP.get(protocol_num, f'UNKNOWN-{protocol_num}'),
+                                  'packets': int(fields[8]),
+                                  'bytes': int(fields[9]),
+                                  'start': int(fields[10]),
+                                  'end': int(fields[11]),
+                                  'action': fields[12],
+                                  'log_status': fields[13],
+                                  'logGroup': log_group,
+                                  'logStream': log_stream,
+                                  'vpc_flow_log': True
+                              }
+                              transformed_logs.append(transformed)
+
+                      # Create output with all flow log events
+                      if transformed_logs:
+                          output_data = '\n'.join([json.dumps(log) for log in transformed_logs]) + '\n'
+                          output_record = {
+                              'recordId': record['recordId'],
+                              'result': 'Ok',
+                              'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                          }
+                      else:
+                          output_record = {
+                              'recordId': record['recordId'],
+                              'result': 'Dropped',
+                              'data': record['data']
+                          }
+
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt FlowLogsKinesisStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt FlowLogTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt FlowLogsKinesisStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-flowlogs/'
+          ErrorOutputPrefix: 'error-flowlogs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt FlowLogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for CloudWatch Logs to write to Kinesis
+  CloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudWatchLogsKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt FlowLogsKinesisStream.Arn
+
+  # CloudWatch Logs Subscription Filter
+  LogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - FlowLogsKinesisStream
+      - CloudWatchLogsRole
+    Properties:
+      LogGroupName: !Ref FlowLogsLogGroup
+      FilterPattern: ''
+      DestinationArn: !GetAtt FlowLogsKinesisStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  # VPC Flow Log
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    DependsOn:
+      - FlowLogsLogGroup
+      - FlowLogsRole
+    Properties:
+      ResourceType: VPC
+      ResourceIds:
+        - !Ref VpcId
+      TrafficType: !Ref TrafficType
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogsLogGroup
+      LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
+      DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-flowlog'
+
+Outputs:
+  VpcId:
+    Description: 'VPC ID being monitored'
+    Value: !Ref VpcId
+
+  FlowLogId:
+    Description: 'VPC Flow Log ID'
+    Value: !Ref VPCFlowLog
+
+  CloudWatchLogGroupName:
+    Description: 'CloudWatch Log Group Name'
+    Value: !Ref FlowLogsLogGroup
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref FlowLogsKinesisStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt FlowLogsKinesisStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  TrafficType:
+    Description: 'Traffic type being logged'
+    Value: !Ref TrafficType
+
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: 'VPC Flow Logs are now streaming to OpenObserve via CloudWatch Logs and Kinesis with protocol enrichment'

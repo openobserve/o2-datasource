@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EventBridge Events to OpenObserve via Kinesis Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'eventbridge-events'
+    Description: 'Name for the OpenObserve stream'
+
+  RuleName:
+    Type: String
+    Description: 'Name for the EventBridge rule (e.g., ec2-state-changes, all-events)'
+
+  EventPattern:
+    Type: String
+    Description: 'EventBridge event pattern in JSON format (see README for examples)'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-events/'
+          ErrorOutputPrefix: 'error-events/'
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for EventBridge to write to Firehose
+  EventBridgeToFirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: EventBridgeFirehoseWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecord'
+                  - 'firehose:PutRecordBatch'
+                Resource: !GetAtt OpenObserveFirehose.Arn
+
+  # EventBridge Rule
+  EventBridgeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Ref RuleName
+      Description: !Sub 'Capture events and send to OpenObserve via Firehose - ${RuleName}'
+      EventPattern: !Ref EventPattern
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt OpenObserveFirehose.Arn
+          Id: OpenObserveFirehoseTarget
+          RoleArn: !GetAtt EventBridgeToFirehoseRole.Arn
+          HttpParameters:
+            HeaderParameters:
+              X-Event-Source: 'aws-eventbridge'
+              X-Rule-Name: !Ref RuleName
+
+Outputs:
+  EventBridgeRuleName:
+    Description: 'EventBridge Rule Name'
+    Value: !Ref EventBridgeRule
+
+  EventBridgeRuleArn:
+    Description: 'EventBridge Rule ARN'
+    Value: !GetAtt EventBridgeRule.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  FirehoseDeliveryStreamArn:
+    Description: 'Firehose Delivery Stream ARN'
+    Value: !GetAtt OpenObserveFirehose.Arn
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  StreamName:
+    Description: 'OpenObserve Stream Name'
+    Value: !Ref StreamName
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: 'Events matching the pattern will now be sent to OpenObserve automatically'

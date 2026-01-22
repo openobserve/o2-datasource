@@ -1,0 +1,444 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'API Gateway Access Logs to OpenObserve via Kinesis Data Streams and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'apigateway-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  ApiGatewayId:
+    Type: String
+    Description: 'REST API Gateway ID'
+
+  StageName:
+    Type: String
+    Description: 'API Gateway Stage name (e.g., prod, dev, staging)'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  FilterPattern:
+    Type: String
+    Default: ''
+    Description: 'CloudWatch Logs filter pattern (leave empty to stream all logs)'
+
+  EnableAccessLogging:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Whether to enable access logging for the API Gateway stage (if not already enabled)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # CloudWatch Log Group for API Gateway Access Logs
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ApiGatewayId}/${StageName}'
+      RetentionInDays: 7
+
+  # IAM Role for API Gateway to write to CloudWatch Logs
+  ApiGatewayLogsRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldEnableLogging
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+
+  # Kinesis Data Stream for API Gateway Logs
+  ApiGatewayLogStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-apigateway-logs'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt ApiGatewayLogStream.Arn
+
+  # Lambda Function for API Gateway Log Transformation
+  LogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import gzip
+          import re
+          from datetime import datetime
+
+          def parse_api_gateway_log(message):
+              """Parse API Gateway access log message into structured fields"""
+              try:
+                  # Try to parse as JSON first (if using JSON log format)
+                  if message.strip().startswith('{'):
+                      return json.loads(message)
+
+                  # Parse custom log format: RequestId: xxx, SourceIP: xxx, Method: xxx, etc.
+                  log_data = {}
+
+                  # Extract key-value pairs
+                  patterns = {
+                      'requestId': r'RequestId:\s*([^,]+)',
+                      'sourceIp': r'SourceIP:\s*([^,]+)',
+                      'method': r'Method:\s*([^,]+)',
+                      'resourcePath': r'ResourcePath:\s*([^,]+)',
+                      'statusCode': r'StatusCode:\s*(\d+)',
+                      'responseLength': r'ResponseLength:\s*(\d+)',
+                      'requestTime': r'RequestTime:\s*([^,]+)',
+                      'integrationLatency': r'IntegrationLatency:\s*(\d+)',
+                      'latency': r'Latency:\s*(\d+)',
+                      'userAgent': r'UserAgent:\s*([^,]+)',
+                      'protocol': r'Protocol:\s*([^,]+)',
+                  }
+
+                  for field, pattern in patterns.items():
+                      match = re.search(pattern, message)
+                      if match:
+                          value = match.group(1).strip()
+                          # Convert numeric fields
+                          if field in ['statusCode', 'responseLength', 'integrationLatency', 'latency']:
+                              try:
+                                  log_data[field] = int(value)
+                              except ValueError:
+                                  log_data[field] = value
+                          else:
+                              log_data[field] = value
+
+                  # If no fields extracted, return raw message
+                  if not log_data:
+                      log_data = {'raw_message': message}
+
+                  return log_data
+
+              except Exception as e:
+                  # Return raw message if parsing fails
+                  return {'raw_message': message, 'parse_error': str(e)}
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  # Decode the data
+                  payload = base64.b64decode(record['data'])
+
+                  try:
+                      # Decompress the gzip data from CloudWatch Logs
+                      decompressed = gzip.decompress(payload)
+                      log_data = json.loads(decompressed)
+
+                      # CloudWatch Logs format
+                      log_group = log_data.get('logGroup', '')
+                      log_stream = log_data.get('logStream', '')
+                      log_events = log_data.get('logEvents', [])
+
+                      # Transform each log event
+                      transformed_logs = []
+                      for event in log_events:
+                          message = event.get('message', '')
+
+                          # Parse API Gateway access log
+                          parsed_log = parse_api_gateway_log(message)
+
+                          # Build transformed log entry
+                          transformed = {
+                              'timestamp': event.get('timestamp', int(datetime.utcnow().timestamp() * 1000)),
+                              'logGroup': log_group,
+                              'logStream': log_stream,
+                              'id': event.get('id', ''),
+                          }
+
+                          # Merge parsed fields
+                          transformed.update(parsed_log)
+
+                          # Add status code category
+                          if 'statusCode' in parsed_log:
+                              status = parsed_log['statusCode']
+                              if isinstance(status, int):
+                                  if status < 300:
+                                      transformed['statusCategory'] = 'Success'
+                                  elif status < 400:
+                                      transformed['statusCategory'] = 'Redirect'
+                                  elif status < 500:
+                                      transformed['statusCategory'] = 'ClientError'
+                                  else:
+                                      transformed['statusCategory'] = 'ServerError'
+
+                          # Calculate performance indicators
+                          if 'latency' in parsed_log and isinstance(parsed_log['latency'], int):
+                              latency = parsed_log['latency']
+                              if latency > 3000:
+                                  transformed['performanceIssue'] = 'Slow'
+                              elif latency > 1000:
+                                  transformed['performanceIssue'] = 'Warning'
+                              else:
+                                  transformed['performanceIssue'] = 'Normal'
+
+                          transformed_logs.append(transformed)
+
+                      # Create output with all log events
+                      output_data = '\n'.join([json.dumps(log) for log in transformed_logs]) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt ApiGatewayLogStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt LogTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt ApiGatewayLogStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+            - AttributeName: api-id
+              AttributeValue: !Ref ApiGatewayId
+            - AttributeName: stage
+              AttributeValue: !Ref StageName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt LogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for CloudWatch Logs to write to Kinesis
+  CloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudWatchLogsKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt ApiGatewayLogStream.Arn
+
+  # CloudWatch Logs Subscription Filter
+  LogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - ApiGatewayLogStream
+      - CloudWatchLogsRole
+      - ApiGatewayLogGroup
+    Properties:
+      LogGroupName: !Ref ApiGatewayLogGroup
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt ApiGatewayLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+Conditions:
+  ShouldEnableLogging: !Equals [!Ref EnableAccessLogging, 'true']
+
+Outputs:
+  ApiGatewayId:
+    Description: 'API Gateway ID'
+    Value: !Ref ApiGatewayId
+
+  StageName:
+    Description: 'API Gateway Stage Name'
+    Value: !Ref StageName
+
+  LogGroupName:
+    Description: 'CloudWatch Log Group Name'
+    Value: !Ref ApiGatewayLogGroup
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref ApiGatewayLogStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt ApiGatewayLogStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      1. Enable access logging in API Gateway console for ${ApiGatewayId}/${StageName}
+      2. Set log format and CloudWatch Log Group ARN: ${ApiGatewayLogGroup.Arn}
+      3. Access logs will be streamed to OpenObserve automatically
