@@ -473,9 +473,12 @@ create_query_logging_config() {
     print_info "Log Group ARN: $LOG_GROUP_ARN"
 
     # Create query logging config
+    # Remove :* from ARN if present (not needed for this API call)
+    LOG_GROUP_ARN_CLEAN=$(echo "$LOG_GROUP_ARN" | sed 's/:*$//')
+
     if QUERY_CONFIG_ID=$(aws route53 create-query-logging-config \
         --hosted-zone-id "$HOSTED_ZONE_ID" \
-        --cloudwatch-logs-log-group-arn "$LOG_GROUP_ARN" \
+        --cloud-watch-logs-log-group-arn "$LOG_GROUP_ARN_CLEAN" \
         --profile "$AWS_PROFILE" \
         --query 'QueryLoggingConfig.Id' \
         --output text 2>&1); then
