@@ -50,10 +50,14 @@ list_vpcs() {
     print_info "Fetching available VPCs..."
     echo ""
 
-    vpcs=$(aws ec2 describe-vpcs --query 'Vpcs[*].[VpcId,Tags[?Key==`Name`].Value|[0],CidrBlock,IsDefault]' --output text)
+    vpcs=$(aws ec2 describe-vpcs \
+        --profile "$AWS_PROFILE" \
+        --region "$REGION" \
+        --query 'Vpcs[*].[VpcId,Tags[?Key==`Name`].Value|[0],CidrBlock,IsDefault]' \
+        --output text)
 
     if [ -z "$vpcs" ]; then
-        print_error "No VPCs found in this region."
+        print_error "No VPCs found in region $REGION."
         exit 1
     fi
 
@@ -158,8 +162,8 @@ get_openobserve_details() {
 # Function to get S3 bucket name
 get_s3_bucket() {
     echo ""
-    REGION=$(aws configure get region)
-    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    # REGION is already set in main()
+    ACCOUNT_ID=$(aws sts get-caller-identity --profile "$AWS_PROFILE" --query Account --output text)
     DEFAULT_BUCKET="vpc-flowlogs-backup-${ACCOUNT_ID}-${REGION}"
 
     read -p "S3 bucket name for failed records (default: $DEFAULT_BUCKET): " s3_bucket
@@ -189,17 +193,17 @@ deploy_stack() {
     print_info "Deploying CloudFormation stack: $STACK_NAME"
     echo ""
 
-    # Build parameters
-    PARAMS="ParameterKey=OpenObserveEndpoint,ParameterValue=$OPENOBSERVE_ENDPOINT"
-    PARAMS="$PARAMS ParameterKey=OpenObserveAccessKey,ParameterValue=$OPENOBSERVE_ACCESS_KEY"
-    PARAMS="$PARAMS ParameterKey=StreamName,ParameterValue=$STREAM_NAME"
-    PARAMS="$PARAMS ParameterKey=VpcId,ParameterValue=$VPC_ID"
-    PARAMS="$PARAMS ParameterKey=TrafficType,ParameterValue=$TRAFFIC_TYPE"
-    PARAMS="$PARAMS ParameterKey=BackupS3BucketName,ParameterValue=$BACKUP_S3_BUCKET"
+    # Build parameters (format for 'cloudformation deploy')
+    PARAMS="OpenObserveEndpoint=$OPENOBSERVE_ENDPOINT"
+    PARAMS="$PARAMS OpenObserveAccessKey=$OPENOBSERVE_ACCESS_KEY"
+    PARAMS="$PARAMS StreamName=$STREAM_NAME"
+    PARAMS="$PARAMS VpcId=$VPC_ID"
+    PARAMS="$PARAMS TrafficType=$TRAFFIC_TYPE"
+    PARAMS="$PARAMS BackupS3BucketName=$BACKUP_S3_BUCKET"
 
     if [ "$DEPLOYMENT_TYPE" = "cloudwatch" ]; then
-        PARAMS="$PARAMS ParameterKey=ShardCount,ParameterValue=$SHARD_COUNT"
-        PARAMS="$PARAMS ParameterKey=CloudWatchLogGroupRetention,ParameterValue=$RETENTION_DAYS"
+        PARAMS="$PARAMS ShardCount=$SHARD_COUNT"
+        PARAMS="$PARAMS CloudWatchLogGroupRetention=$RETENTION_DAYS"
     fi
 
     # Get script directory
@@ -207,6 +211,8 @@ deploy_stack() {
 
     # Deploy stack
     if aws cloudformation deploy \
+        --profile "$AWS_PROFILE" \
+        --region "$REGION" \
         --template-file "$SCRIPT_DIR/$TEMPLATE_FILE" \
         --stack-name "$STACK_NAME" \
         --parameter-overrides $PARAMS \
@@ -246,7 +252,13 @@ main() {
     check_aws_credentials
 
     # Get current region
-    REGION=$(aws configure get region)
+    REGION=$(aws configure get region --profile "$AWS_PROFILE" 2>/dev/null || echo "us-east-2")
+
+    # If AWS_REGION env var is set, use it
+    if [ -n "$AWS_REGION" ]; then
+        REGION="$AWS_REGION"
+    fi
+
     print_info "AWS Region: $REGION"
     echo ""
 

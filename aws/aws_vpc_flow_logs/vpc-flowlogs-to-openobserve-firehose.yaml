@@ -54,29 +54,6 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # IAM Role for VPC Flow Logs
-  FlowLogsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: vpc-flow-logs.amazonaws.com
-            Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: FlowLogsToFirehose
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'firehose:PutRecord'
-                  - 'firehose:PutRecordBatch'
-                  - 'firehose:DescribeDeliveryStream'
-                Resource: !GetAtt OpenObserveFirehose.Arn
-
   # IAM Role for Kinesis Firehose
   FirehoseDeliveryRole:
     Type: AWS::IAM::Role
@@ -159,10 +136,16 @@ Resources:
               for record in event['records']:
                   try:
                       # Decode the data
-                      payload = base64.b64decode(record['data'])
+                      payload = base64.b64decode(record['data']).decode('utf-8').strip()
 
-                      # VPC Flow Logs are space-separated values
-                      flow_log_line = payload.decode('utf-8').strip()
+                      # VPC Flow Logs sent to Firehose are JSON-wrapped
+                      # Format: {"message": "2 058694856476 eni-xxx ..."}
+                      try:
+                          json_data = json.loads(payload)
+                          flow_log_line = json_data.get('message', payload)
+                      except json.JSONDecodeError:
+                          # If not JSON, assume it's raw flow log format
+                          flow_log_line = payload
 
                       # Skip header lines
                       if flow_log_line.startswith('version') or flow_log_line.startswith('account-id'):
@@ -280,16 +263,13 @@ Resources:
     Type: AWS::EC2::FlowLog
     DependsOn:
       - OpenObserveFirehose
-      - FlowLogsRole
     Properties:
       ResourceType: VPC
-      ResourceIds:
-        - !Ref VpcId
+      ResourceId: !Ref VpcId
       TrafficType: !Ref TrafficType
       LogDestinationType: kinesis-data-firehose
       LogDestination: !GetAtt OpenObserveFirehose.Arn
       LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
-      DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-flowlog'
