@@ -1,0 +1,324 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB Streams to OpenObserve via Lambda and Firehose (Cost-effective)'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis_firehose)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'dynamodb-streams'
+    Description: 'Name for the OpenObserve stream'
+
+  DynamoDBTableName:
+    Type: String
+    Description: 'DynamoDB table name to monitor (existing table)'
+
+  DynamoDBStreamArn:
+    Type: String
+    Description: 'DynamoDB Stream ARN (script will auto-detect this)'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  BatchSize:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 10000
+    Description: 'Number of records to read from DynamoDB stream in each batch'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBStreamReadFirehoseWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:GetRecords'
+                  - 'dynamodb:GetShardIterator'
+                  - 'dynamodb:DescribeStream'
+                  - 'dynamodb:ListStreams'
+                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoDBTableName}/stream/*'
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecord'
+                  - 'firehose:PutRecordBatch'
+                Resource: !GetAtt OpenObserveFirehose.Arn
+
+  # Lambda Function to Process DynamoDB Streams
+  StreamProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-stream-processor'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          FIREHOSE_STREAM_NAME: !Ref OpenObserveFirehose
+          OPENOBSERVE_STREAM_NAME: !Ref StreamName
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import os
+          from datetime import datetime
+          from decimal import Decimal
+
+          firehose = boto3.client('firehose')
+
+          class DecimalEncoder(json.JSONEncoder):
+              def default(self, obj):
+                  if isinstance(obj, Decimal):
+                      return float(obj)
+                  return super(DecimalEncoder, self).default(obj)
+
+          def simplify_dynamodb_item(item):
+              """Convert DynamoDB format to simple dict"""
+              if not item:
+                  return {}
+
+              result = {}
+              for key, value in item.items():
+                  if isinstance(value, dict):
+                      # Extract the value from DynamoDB type wrapper
+                      if 'S' in value:
+                          result[key] = value['S']
+                      elif 'N' in value:
+                          result[key] = float(value['N'])
+                      elif 'BOOL' in value:
+                          result[key] = value['BOOL']
+                      elif 'NULL' in value:
+                          result[key] = None
+                      elif 'M' in value:
+                          result[key] = simplify_dynamodb_item(value['M'])
+                      elif 'L' in value:
+                          result[key] = [simplify_dynamodb_item(v) if isinstance(v, dict) else v for v in value['L']]
+                      elif 'SS' in value:
+                          result[key] = value['SS']
+                      elif 'NS' in value:
+                          result[key] = [float(n) for n in value['NS']]
+                      elif 'BS' in value:
+                          result[key] = value['BS']
+                      else:
+                          result[key] = value
+                  else:
+                      result[key] = value
+              return result
+
+          def lambda_handler(event, context):
+              firehose_name = os.environ['FIREHOSE_STREAM_NAME']
+              records = []
+
+              for record in event['Records']:
+                  try:
+                      # Extract DynamoDB stream data
+                      event_name = record.get('eventName', '')
+                      event_source = record.get('eventSource', '')
+                      aws_region = record.get('awsRegion', '')
+                      event_id = record.get('eventID', '')
+
+                      dynamodb = record.get('dynamodb', {})
+                      keys = simplify_dynamodb_item(dynamodb.get('Keys', {}))
+                      new_image = simplify_dynamodb_item(dynamodb.get('NewImage', {}))
+                      old_image = simplify_dynamodb_item(dynamodb.get('OldImage', {}))
+
+                      # Get table name from event source ARN
+                      event_source_arn = record.get('eventSourceARN', '')
+                      table_name = event_source_arn.split('/')[-3] if event_source_arn else ''
+
+                      # Transform to structured format
+                      transformed = {
+                          'timestamp': datetime.utcnow().isoformat() + 'Z',
+                          'eventID': event_id,
+                          'eventName': event_name,
+                          'eventSource': event_source,
+                          'awsRegion': aws_region,
+                          'tableName': table_name,
+                          'streamViewType': dynamodb.get('StreamViewType', ''),
+                          'keys': keys,
+                          'newImage': new_image if event_name in ['INSERT', 'MODIFY'] else {},
+                          'oldImage': old_image if event_name in ['MODIFY', 'REMOVE'] else {},
+                          'approximateCreationDateTime': dynamodb.get('ApproximateCreationDateTime', 0),
+                          'sizeBytes': dynamodb.get('SizeBytes', 0),
+                      }
+
+                      records.append({
+                          'Data': json.dumps(transformed, cls=DecimalEncoder) + '\n'
+                      })
+
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      print(f"Record: {json.dumps(record, default=str)}")
+                      continue
+
+              # Send to Firehose in batches of 500 (max)
+              if records:
+                  batch_size = 500
+                  for i in range(0, len(records), batch_size):
+                      batch = records[i:i + batch_size]
+
+                      response = firehose.put_record_batch(
+                          DeliveryStreamName=firehose_name,
+                          Records=batch
+                      )
+
+                      failed_count = response['FailedPutCount']
+                      if failed_count > 0:
+                          print(f"Failed to send {failed_count} records")
+                      else:
+                          print(f"Successfully sent {len(batch)} records to Firehose")
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps(f'Processed {len(records)} DynamoDB stream records')
+              }
+
+  # Event Source Mapping for Lambda to DynamoDB Streams
+  DynamoDBStreamEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Ref DynamoDBStreamArn
+      FunctionName: !GetAtt StreamProcessorFunction.Arn
+      StartingPosition: LATEST
+      BatchSize: !Ref BatchSize
+      MaximumBatchingWindowInSeconds: 5
+      MaximumRecordAgeInSeconds: 604800
+      MaximumRetryAttempts: 3
+      BisectBatchOnFunctionError: true
+      ParallelizationFactor: 1
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+
+Outputs:
+  DynamoDBTableName:
+    Description: 'DynamoDB Table Name'
+    Value: !Ref DynamoDBTableName
+
+  LambdaFunctionName:
+    Description: 'Lambda Function Name'
+    Value: !Ref StreamProcessorFunction
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  EventSourceMappingId:
+    Description: 'DynamoDB Stream Event Source Mapping ID'
+    Value: !Ref DynamoDBStreamEventSource
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      DynamoDB Streams are now being processed and sent to OpenObserve.
+      Note: You need to enable DynamoDB Streams on table '${DynamoDBTableName}' if not already enabled.
+      Run: aws dynamodb update-table --table-name ${DynamoDBTableName} --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES

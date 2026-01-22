@@ -1,0 +1,375 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Standard Logs to OpenObserve via S3, Lambda, and Firehose (Cost-effective)'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'cloudfront-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  CloudFrontDistributionId:
+    Type: String
+    Description: 'CloudFront Distribution ID to enable standard logging'
+
+  LogS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for CloudFront standard logs (must be globally unique)'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  LogPrefix:
+    Type: String
+    Default: 'cloudfront-logs/'
+    Description: 'S3 prefix for CloudFront logs'
+
+Resources:
+  # S3 Bucket for CloudFront Standard Logs
+  CloudFrontLogBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - LambdaInvokePermission
+    Properties:
+      BucketName: !Ref LogS3BucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt LogProcessorFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: !Ref LogPrefix
+                  - Name: suffix
+                    Value: '.gz'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: true
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: true
+
+  # S3 Bucket Policy for CloudFront Logging
+  CloudFrontLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudFrontLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudFrontWrite
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${LogS3BucketName}/${LogPrefix}*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}'
+          - Sid: AWSCloudFrontACL
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !Sub 'arn:aws:s3:::${LogS3BucketName}'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}'
+
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Lambda Log Processor
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: S3ReadFirehoseWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${LogS3BucketName}'
+                  - !Sub 'arn:aws:s3:::${LogS3BucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecord'
+                  - 'firehose:PutRecordBatch'
+                Resource: !GetAtt OpenObserveFirehose.Arn
+
+  # Lambda Permission for S3 to invoke
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LogProcessorFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${LogS3BucketName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  # Lambda Function to Process CloudFront Logs
+  LogProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-processor'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          FIREHOSE_STREAM_NAME: !Ref OpenObserveFirehose
+      Code:
+        ZipFile: |
+          import boto3
+          import gzip
+          import json
+          import os
+          import urllib.parse
+          from datetime import datetime
+
+          s3 = boto3.client('s3')
+          firehose = boto3.client('firehose')
+
+          def parse_cloudfront_log_line(line):
+              """Parse a single CloudFront standard log line"""
+              if line.startswith('#'):
+                  return None
+
+              fields = line.split('\t')
+              if len(fields) < 24:
+                  return None
+
+              try:
+                  return {
+                      'date': fields[0],
+                      'time': fields[1],
+                      'timestamp': f"{fields[0]}T{fields[1]}Z",
+                      'x-edge-location': fields[2],
+                      'sc-bytes': int(fields[3]) if fields[3] != '-' else 0,
+                      'c-ip': fields[4],
+                      'cs-method': fields[5],
+                      'cs-host': fields[6],
+                      'cs-uri-stem': fields[7],
+                      'sc-status': int(fields[8]) if fields[8] != '-' else 0,
+                      'cs-referer': urllib.parse.unquote(fields[9]) if fields[9] != '-' else '',
+                      'cs-user-agent': urllib.parse.unquote(fields[10]) if fields[10] != '-' else '',
+                      'cs-uri-query': urllib.parse.unquote(fields[11]) if fields[11] != '-' else '',
+                      'cs-cookie': fields[12] if fields[12] != '-' else '',
+                      'x-edge-result-type': fields[13],
+                      'x-edge-request-id': fields[14],
+                      'x-host-header': fields[15],
+                      'cs-protocol': fields[16],
+                      'cs-bytes': int(fields[17]) if fields[17] != '-' else 0,
+                      'time-taken': float(fields[18]) if fields[18] != '-' else 0.0,
+                      'x-forwarded-for': fields[19] if fields[19] != '-' else '',
+                      'ssl-protocol': fields[20] if fields[20] != '-' else '',
+                      'ssl-cipher': fields[21] if fields[21] != '-' else '',
+                      'x-edge-response-result-type': fields[22] if len(fields) > 22 else '',
+                      'cs-protocol-version': fields[23] if len(fields) > 23 else '',
+                  }
+              except (ValueError, IndexError) as e:
+                  print(f"Error parsing line: {str(e)}")
+                  return None
+
+          def lambda_handler(event, context):
+              firehose_name = os.environ['FIREHOSE_STREAM_NAME']
+
+              for record in event['Records']:
+                  bucket = record['s3']['bucket']['name']
+                  key = urllib.parse.unquote_plus(record['s3']['object']['key'])
+
+                  print(f"Processing {bucket}/{key}")
+
+                  try:
+                      # Download and decompress the log file
+                      response = s3.get_object(Bucket=bucket, Key=key)
+
+                      with gzip.GzipFile(fileobj=response['Body']) as gzipfile:
+                          content = gzipfile.read().decode('utf-8')
+
+                      # Parse log lines
+                      records = []
+                      for line in content.split('\n'):
+                          if not line.strip():
+                              continue
+
+                          parsed = parse_cloudfront_log_line(line)
+                          if parsed:
+                              records.append({
+                                  'Data': json.dumps(parsed) + '\n'
+                              })
+
+                      # Send to Firehose in batches of 500 (max)
+                      batch_size = 500
+                      for i in range(0, len(records), batch_size):
+                          batch = records[i:i + batch_size]
+
+                          response = firehose.put_record_batch(
+                              DeliveryStreamName=firehose_name,
+                              Records=batch
+                          )
+
+                          failed_count = response['FailedPutCount']
+                          if failed_count > 0:
+                              print(f"Failed to send {failed_count} records")
+
+                      print(f"Successfully processed {len(records)} log entries from {key}")
+
+                  except Exception as e:
+                      print(f"Error processing {key}: {str(e)}")
+                      raise e
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Processing complete')
+              }
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 5
+          IntervalInSeconds: 300
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+
+Outputs:
+  CloudFrontLogBucketName:
+    Description: 'S3 Bucket for CloudFront Standard Logs'
+    Value: !Ref CloudFrontLogBucket
+
+  CloudFrontLogBucketArn:
+    Description: 'S3 Bucket ARN for CloudFront Logs'
+    Value: !GetAtt CloudFrontLogBucket.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  LogProcessorFunctionName:
+    Description: 'Lambda Function Name for Log Processing'
+    Value: !Ref LogProcessorFunction
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      1. Update your CloudFront distribution to enable standard logging:
+         - Logging: ON
+         - S3 Bucket: ${CloudFrontLogBucket.DomainName}
+         - Log Prefix: ${LogPrefix}
+      2. You can do this via AWS Console or CLI:
+         aws cloudfront update-distribution --id ${CloudFrontDistributionId} --distribution-config file://config.json

@@ -1,0 +1,334 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Real-time Logs to OpenObserve via Kinesis Data Streams and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'cloudfront-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  CloudFrontDistributionId:
+    Type: String
+    Description: 'CloudFront Distribution ID to enable real-time logging'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Kinesis Data Stream for CloudFront Logs
+  CloudFrontLogStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-cloudfront-logs'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt CloudFrontLogStream.Arn
+
+  # Lambda Function for Log Transformation
+  LogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import urllib.parse
+          from datetime import datetime
+
+          def lambda_handler(event, context):
+              output = []
+
+              # Field order as defined in CloudFrontRealtimeLogConfig
+              fields = [
+                  'timestamp', 'c-ip', 'sc-status', 'sc-bytes', 'cs-method',
+                  'cs-protocol', 'cs-uri-stem', 'cs-bytes', 'x-edge-location',
+                  'time-taken', 'cs-user-agent', 'cs-referer', 'x-edge-result-type'
+              ]
+
+              for record in event['records']:
+                  try:
+                      # Decode the data (CloudFront real-time logs are TSV format)
+                      payload = base64.b64decode(record['data']).decode('utf-8').strip()
+
+                      # Split by tabs
+                      values = payload.split('\t')
+
+                      # Create structured log entry
+                      transformed = {}
+                      for i, field in enumerate(fields):
+                          if i < len(values):
+                              value = values[i]
+                              # URL decode user-agent and referer
+                              if field in ['cs-user-agent', 'cs-referer']:
+                                  value = urllib.parse.unquote(value) if value != '-' else ''
+                              # Convert numeric fields
+                              elif field in ['sc-status', 'sc-bytes', 'cs-bytes']:
+                                  value = int(value) if value.isdigit() else 0
+                              elif field in ['time-taken', 'timestamp']:
+                                  try:
+                                      value = float(value)
+                                  except:
+                                      value = 0.0
+
+                              transformed[field] = value
+                          else:
+                              transformed[field] = ''
+
+                      # Encode transformed data
+                      output_data = json.dumps(transformed) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      print(f"Payload: {payload if 'payload' in locals() else 'N/A'}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt CloudFrontLogStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt LogTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt CloudFrontLogStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt LogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+  # CloudFront Real-time Log Configuration
+  CloudFrontRealtimeLogConfig:
+    Type: AWS::CloudFront::RealtimeLogConfig
+    Properties:
+      Name: !Sub '${AWS::StackName}-realtime-logs'
+      EndPoints:
+        - StreamType: Kinesis
+          KinesisStreamConfig:
+            RoleArn: !GetAtt CloudFrontStreamRole.Arn
+            StreamArn: !GetAtt CloudFrontLogStream.Arn
+      Fields:
+        - timestamp
+        - c-ip
+        - cs-method
+        - cs-uri-stem
+        - sc-status
+        - sc-bytes
+        - time-taken
+        - cs-user-agent
+        - cs-referer
+        - x-edge-location
+        - x-edge-result-type
+        - cs-protocol
+        - cs-bytes
+      SamplingRate: 100
+
+  # IAM Role for CloudFront to write to Kinesis
+  CloudFrontStreamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudFrontKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStreamSummary'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt CloudFrontLogStream.Arn
+
+Outputs:
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref CloudFrontLogStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt CloudFrontLogStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  RealtimeLogConfigArn:
+    Description: 'CloudFront Real-time Log Configuration ARN'
+    Value: !GetAtt CloudFrontRealtimeLogConfig.Arn
+
+  RealtimeLogConfigId:
+    Description: 'CloudFront Real-time Log Configuration ID (attach this to your CloudFront distribution)'
+    Value: !Ref CloudFrontRealtimeLogConfig
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: 'Attach the Real-time Log Config to your CloudFront distribution cache behaviors in the AWS Console or via CLI'

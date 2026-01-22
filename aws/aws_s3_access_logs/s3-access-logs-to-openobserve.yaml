@@ -1,0 +1,405 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Access Logs to OpenObserve via Lambda and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 's3-access-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  SourceBucketName:
+    Type: String
+    Description: 'S3 bucket name to monitor (access logs will be enabled for this bucket)'
+
+  LogDestinationBucketName:
+    Type: String
+    Description: 'S3 bucket name for S3 access logs (must be globally unique)'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  LogPrefix:
+    Type: String
+    Default: 's3-access-logs/'
+    Description: 'S3 prefix for access logs'
+
+Resources:
+  # S3 Bucket for S3 Access Logs (Destination Bucket)
+  AccessLogDestinationBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - LambdaInvokePermission
+    Properties:
+      BucketName: !Ref LogDestinationBucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt LogProcessorFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: !Ref LogPrefix
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # S3 Bucket Policy for S3 Access Logging
+  AccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogDestinationBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3ServerAccessLogsPolicy
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action:
+              - 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${LogDestinationBucketName}/${LogPrefix}*'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:s3:::${SourceBucketName}'
+
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Lambda Log Processor
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: S3ReadFirehoseWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${LogDestinationBucketName}'
+                  - !Sub 'arn:aws:s3:::${LogDestinationBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecord'
+                  - 'firehose:PutRecordBatch'
+                Resource: !GetAtt OpenObserveFirehose.Arn
+
+  # Lambda Permission for S3 to invoke
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LogProcessorFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${LogDestinationBucketName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  # Lambda Function to Process S3 Access Logs
+  LogProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-processor'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          FIREHOSE_STREAM_NAME: !Ref OpenObserveFirehose
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import os
+          import urllib.parse
+          from datetime import datetime
+          import re
+
+          s3 = boto3.client('s3')
+          firehose = boto3.client('firehose')
+
+          def parse_s3_access_log_line(line):
+              """
+              Parse a single S3 access log line (space-delimited format)
+
+              Format: bucket_owner bucket [time] remote_ip requester request_id operation
+                      key "request_uri" http_status error_code bytes_sent object_size
+                      total_time turn_around_time "referer" "user_agent" version_id
+                      host_id signature_version cipher_suite authentication_type
+                      host_header tls_version access_point_arn acl_required
+              """
+              if not line.strip():
+                  return None
+
+              try:
+                  # Regex pattern to parse S3 access logs
+                  # Handles quoted strings and space-delimited fields
+                  pattern = r'(\S+) (\S+) \[([^\]]+)\] (\S+) (\S+) (\S+) (\S+) (\S+) "([^"]*)" (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) "([^"]*)" "([^"]*)"(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?(?: (\S+))?'
+
+                  match = re.match(pattern, line)
+
+                  if not match:
+                      print(f"Failed to parse line: {line[:100]}")
+                      return None
+
+                  groups = match.groups()
+
+                  # Parse timestamp
+                  timestamp_str = groups[2]  # e.g., "06/Feb/2019:00:00:38 +0000"
+                  try:
+                      dt = datetime.strptime(timestamp_str.split()[0], '%d/%b/%Y:%H:%M:%S')
+                      iso_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                  except:
+                      iso_timestamp = timestamp_str
+
+                  return {
+                      'bucket_owner': groups[0] if groups[0] != '-' else '',
+                      'bucket': groups[1] if groups[1] != '-' else '',
+                      'time': timestamp_str,
+                      'timestamp': iso_timestamp,
+                      'remote_ip': groups[3] if groups[3] != '-' else '',
+                      'requester': groups[4] if groups[4] != '-' else '',
+                      'request_id': groups[5] if groups[5] != '-' else '',
+                      'operation': groups[6] if groups[6] != '-' else '',
+                      'key': groups[7] if groups[7] != '-' else '',
+                      'request_uri': groups[8] if groups[8] != '-' else '',
+                      'http_status': int(groups[9]) if groups[9] != '-' and groups[9].isdigit() else 0,
+                      'error_code': groups[10] if groups[10] != '-' else '',
+                      'bytes_sent': int(groups[11]) if groups[11] != '-' and groups[11].isdigit() else 0,
+                      'object_size': int(groups[12]) if groups[12] != '-' and groups[12].isdigit() else 0,
+                      'total_time': int(groups[13]) if groups[13] != '-' and groups[13].isdigit() else 0,
+                      'turn_around_time': int(groups[14]) if groups[14] != '-' and groups[14].isdigit() else 0,
+                      'referer': groups[15] if groups[15] != '-' else '',
+                      'user_agent': groups[16] if groups[16] != '-' else '',
+                      'version_id': groups[17] if len(groups) > 17 and groups[17] and groups[17] != '-' else '',
+                      'host_id': groups[18] if len(groups) > 18 and groups[18] and groups[18] != '-' else '',
+                      'signature_version': groups[19] if len(groups) > 19 and groups[19] and groups[19] != '-' else '',
+                      'cipher_suite': groups[20] if len(groups) > 20 and groups[20] and groups[20] != '-' else '',
+                      'authentication_type': groups[21] if len(groups) > 21 and groups[21] and groups[21] != '-' else '',
+                      'host_header': groups[22] if len(groups) > 22 and groups[22] and groups[22] != '-' else '',
+                      'tls_version': groups[23] if len(groups) > 23 and groups[23] and groups[23] != '-' else '',
+                      'access_point_arn': groups[24] if len(groups) > 24 and groups[24] and groups[24] != '-' else '',
+                      'acl_required': groups[25] if len(groups) > 25 and groups[25] and groups[25] != '-' else '',
+                  }
+              except Exception as e:
+                  print(f"Error parsing line: {str(e)}")
+                  print(f"Line: {line[:200]}")
+                  return None
+
+          def lambda_handler(event, context):
+              firehose_name = os.environ['FIREHOSE_STREAM_NAME']
+
+              for record in event['Records']:
+                  bucket = record['s3']['bucket']['name']
+                  key = urllib.parse.unquote_plus(record['s3']['object']['key'])
+
+                  print(f"Processing {bucket}/{key}")
+
+                  try:
+                      # Download the log file (S3 access logs are plain text, not gzipped by default)
+                      response = s3.get_object(Bucket=bucket, Key=key)
+                      content = response['Body'].read().decode('utf-8')
+
+                      # Parse log lines
+                      records = []
+                      for line in content.split('\n'):
+                          if not line.strip():
+                              continue
+
+                          parsed = parse_s3_access_log_line(line)
+                          if parsed:
+                              records.append({
+                                  'Data': json.dumps(parsed) + '\n'
+                              })
+
+                      if not records:
+                          print(f"No valid records parsed from {key}")
+                          continue
+
+                      # Send to Firehose in batches of 500 (max)
+                      batch_size = 500
+                      total_sent = 0
+                      total_failed = 0
+
+                      for i in range(0, len(records), batch_size):
+                          batch = records[i:i + batch_size]
+
+                          response = firehose.put_record_batch(
+                              DeliveryStreamName=firehose_name,
+                              Records=batch
+                          )
+
+                          failed_count = response['FailedPutCount']
+                          if failed_count > 0:
+                              print(f"Failed to send {failed_count} records in batch")
+                              total_failed += failed_count
+
+                          total_sent += len(batch) - failed_count
+
+                      print(f"Successfully processed {total_sent} log entries from {key} ({total_failed} failed)")
+
+                  except Exception as e:
+                      print(f"Error processing {key}: {str(e)}")
+                      raise e
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Processing complete')
+              }
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 5
+          IntervalInSeconds: 300
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+
+Outputs:
+  SourceBucketName:
+    Description: 'Source S3 Bucket (monitored bucket)'
+    Value: !Ref SourceBucketName
+
+  AccessLogDestinationBucketName:
+    Description: 'S3 Bucket for Access Logs'
+    Value: !Ref AccessLogDestinationBucket
+
+  AccessLogDestinationBucketArn:
+    Description: 'S3 Bucket ARN for Access Logs'
+    Value: !GetAtt AccessLogDestinationBucket.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  LogProcessorFunctionName:
+    Description: 'Lambda Function Name for Log Processing'
+    Value: !Ref LogProcessorFunction
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      1. S3 Access Logging has been configured automatically for: ${SourceBucketName}
+      2. Access logs will be delivered to: ${AccessLogDestinationBucket}
+      3. Lambda will automatically process new logs and send to OpenObserve
+      4. Note: S3 Access Logs have eventual consistency (may take hours to appear)
+      5. Monitor Lambda logs: aws logs tail /aws/lambda/${AWS::StackName}-log-processor --follow

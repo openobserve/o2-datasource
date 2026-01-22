@@ -1,0 +1,398 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS Logs to OpenObserve via CloudWatch Logs, Kinesis Data Streams and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'rds-logs'
+    Description: 'Name for the OpenObserve stream'
+
+  LogGroupName:
+    Type: String
+    Description: 'CloudWatch Log Group name for RDS logs (e.g., /aws/rds/instance/my-db/error)'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  FilterPattern:
+    Type: String
+    Default: ''
+    Description: 'CloudWatch Logs filter pattern (leave empty to stream all logs)'
+
+  RDSInstanceIdentifier:
+    Type: String
+    Default: ''
+    Description: 'RDS instance identifier (optional, for tagging purposes)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Backup
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # Kinesis Data Stream for RDS Logs
+  RDSLogStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-rds-logs'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Streaming
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt RDSLogStream.Arn
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Transformation
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # Lambda Function for RDS Log Transformation
+  LogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import gzip
+          from datetime import datetime
+          import re
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  # Decode the data
+                  payload = base64.b64decode(record['data'])
+
+                  try:
+                      # Decompress the gzip data from CloudWatch Logs
+                      decompressed = gzip.decompress(payload)
+                      log_data = json.loads(decompressed)
+
+                      # CloudWatch Logs format
+                      log_group = log_data.get('logGroup', '')
+                      log_stream = log_data.get('logStream', '')
+                      log_events = log_data.get('logEvents', [])
+
+                      # Detect RDS log type from log group name
+                      log_type = 'unknown'
+                      db_engine = 'unknown'
+                      db_identifier = 'unknown'
+
+                      # Parse log group: /aws/rds/instance/<name>/<type> or /aws/rds/cluster/<name>/<type>
+                      instance_match = re.search(r'/aws/rds/instance/([^/]+)/(\w+)', log_group)
+                      cluster_match = re.search(r'/aws/rds/cluster/([^/]+)/(\w+)', log_group)
+
+                      if instance_match:
+                          db_identifier = instance_match.group(1)
+                          log_type = instance_match.group(2)
+                      elif cluster_match:
+                          db_identifier = cluster_match.group(1)
+                          log_type = cluster_match.group(2)
+
+                      # Detect database engine from log type or content
+                      if 'postgresql' in log_type.lower() or 'postgresql' in log_group.lower():
+                          db_engine = 'postgresql'
+                      elif 'mysql' in log_type.lower() or 'mysql' in log_group.lower():
+                          db_engine = 'mysql'
+                      elif 'mariadb' in log_type.lower() or 'mariadb' in log_group.lower():
+                          db_engine = 'mariadb'
+                      elif 'oracle' in log_type.lower() or 'oracle' in log_group.lower():
+                          db_engine = 'oracle'
+                      elif 'sqlserver' in log_type.lower() or 'sqlserver' in log_group.lower():
+                          db_engine = 'sqlserver'
+                      elif 'aurora' in log_group.lower():
+                          db_engine = 'aurora'
+
+                      # Transform each log event
+                      transformed_logs = []
+                      for event in log_events:
+                          message = event.get('message', '')
+
+                          # Parse log severity from message
+                          severity = 'INFO'
+                          if any(keyword in message.upper() for keyword in ['ERROR', 'FATAL', 'PANIC']):
+                              severity = 'ERROR'
+                          elif any(keyword in message.upper() for keyword in ['WARNING', 'WARN']):
+                              severity = 'WARNING'
+                          elif 'DEBUG' in message.upper():
+                              severity = 'DEBUG'
+
+                          transformed = {
+                              'timestamp': event.get('timestamp', int(datetime.utcnow().timestamp() * 1000)),
+                              'message': message,
+                              'logGroup': log_group,
+                              'logStream': log_stream,
+                              'id': event.get('id', ''),
+                              'rds_log_type': log_type,
+                              'rds_engine': db_engine,
+                              'rds_identifier': db_identifier,
+                              'severity': severity,
+                              'source': 'aws-rds'
+                          }
+                          transformed_logs.append(transformed)
+
+                      # Create output with all log events
+                      output_data = '\n'.join([json.dumps(log) for log in transformed_logs]) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Transformation
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt RDSLogStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt LogTransformFunction.Arn
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Delivery
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt RDSLogStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt LogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for CloudWatch Logs to write to Kinesis
+  CloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudWatchLogsKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt RDSLogStream.Arn
+      Tags:
+        - Key: Purpose
+          Value: RDS-Logs-Subscription
+        - Key: RDSInstance
+          Value: !Ref RDSInstanceIdentifier
+
+  # CloudWatch Logs Subscription Filter
+  LogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - RDSLogStream
+      - CloudWatchLogsRole
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt RDSLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+Outputs:
+  RDSInstanceIdentifier:
+    Description: 'RDS Instance Identifier'
+    Value: !Ref RDSInstanceIdentifier
+
+  LogGroupName:
+    Description: 'CloudWatch Log Group Name'
+    Value: !Ref LogGroupName
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref RDSLogStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt RDSLogStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: 'RDS logs from the specified CloudWatch Log Group will now be streamed to OpenObserve automatically'

@@ -1,0 +1,312 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Logs to OpenObserve via Kinesis Data Streams and Firehose'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'cloudwatch-logs-stream'
+    Description: 'Name for the OpenObserve stream'
+
+  LogGroupName:
+    Type: String
+    Description: 'CloudWatch Log Group name to stream logs from'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+  FilterPattern:
+    Type: String
+    Default: ''
+    Description: 'CloudWatch Logs filter pattern (leave empty to stream all logs)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Kinesis Data Stream for CloudWatch Logs
+  CloudWatchLogStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-cloudwatch-logs'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt CloudWatchLogStream.Arn
+
+  # Lambda Function for Log Transformation
+  LogTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-log-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          import gzip
+          from datetime import datetime
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  # Decode the data
+                  payload = base64.b64decode(record['data'])
+
+                  try:
+                      # Decompress the gzip data from CloudWatch Logs
+                      decompressed = gzip.decompress(payload)
+                      log_data = json.loads(decompressed)
+
+                      # CloudWatch Logs format
+                      log_group = log_data.get('logGroup', '')
+                      log_stream = log_data.get('logStream', '')
+                      log_events = log_data.get('logEvents', [])
+
+                      # Transform each log event
+                      transformed_logs = []
+                      for event in log_events:
+                          transformed = {
+                              'timestamp': event.get('timestamp', int(datetime.utcnow().timestamp() * 1000)),
+                              'message': event.get('message', ''),
+                              'logGroup': log_group,
+                              'logStream': log_stream,
+                              'id': event.get('id', ''),
+                          }
+                          transformed_logs.append(transformed)
+
+                      # Create output with all log events
+                      output_data = '\n'.join([json.dumps(log) for log in transformed_logs]) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt CloudWatchLogStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt LogTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt CloudWatchLogStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt LogTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+  # IAM Role for CloudWatch Logs to write to Kinesis
+  CloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CloudWatchLogsKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt CloudWatchLogStream.Arn
+
+  # CloudWatch Logs Subscription Filter
+  LogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - CloudWatchLogStream
+      - CloudWatchLogsRole
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+Outputs:
+  LogGroupName:
+    Description: 'CloudWatch Log Group Name'
+    Value: !Ref LogGroupName
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref CloudWatchLogStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt CloudWatchLogStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: 'Logs from the specified CloudWatch Log Group will now be streamed to OpenObserve automatically'

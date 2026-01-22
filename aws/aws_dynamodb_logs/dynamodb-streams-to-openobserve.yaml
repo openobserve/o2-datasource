@@ -1,0 +1,308 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB Streams to OpenObserve via Kinesis Data Streams and Firehose (Recommended)'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis_firehose)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  StreamName:
+    Type: String
+    Default: 'dynamodb-streams'
+    Description: 'Name for the OpenObserve stream'
+
+  DynamoDBTableName:
+    Type: String
+    Description: 'DynamoDB table name to monitor (existing table)'
+
+  ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Number of shards for Kinesis Data Stream'
+
+  BackupS3BucketName:
+    Type: String
+    Description: 'S3 bucket name for failed records backup (must be globally unique)'
+
+Resources:
+  # S3 Bucket for Failed Records
+  BackupS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BackupS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Kinesis Data Stream for DynamoDB
+  DynamoDBKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-dynamodb-stream'
+      ShardCount: !Ref ShardCount
+      RetentionPeriodHours: 24
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+
+  # IAM Role for DynamoDB to write to Kinesis
+  DynamoDBKinesisRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: dynamodb.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: DynamoDBKinesisWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                  - 'kinesis:DescribeStream'
+                Resource: !GetAtt DynamoDBKinesisStream.Arn
+
+  # IAM Role for Lambda Transformation Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: KinesisReadWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:ListStreams'
+                  - 'kinesis:PutRecord'
+                  - 'kinesis:PutRecords'
+                Resource: !GetAtt DynamoDBKinesisStream.Arn
+
+  # Lambda Function for DynamoDB Stream Transformation
+  StreamTransformFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-stream-transformer'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import base64
+          import json
+          from datetime import datetime
+          from decimal import Decimal
+
+          class DecimalEncoder(json.JSONEncoder):
+              def default(self, obj):
+                  if isinstance(obj, Decimal):
+                      return float(obj)
+                  return super(DecimalEncoder, self).default(obj)
+
+          def lambda_handler(event, context):
+              output = []
+
+              for record in event['records']:
+                  try:
+                      # Decode the data
+                      payload = base64.b64decode(record['data']).decode('utf-8')
+                      dynamodb_record = json.loads(payload)
+
+                      # Extract DynamoDB stream data
+                      event_name = dynamodb_record.get('eventName', '')
+                      event_source = dynamodb_record.get('eventSource', '')
+                      aws_region = dynamodb_record.get('awsRegion', '')
+                      event_id = dynamodb_record.get('eventID', '')
+
+                      dynamodb = dynamodb_record.get('dynamodb', {})
+                      keys = dynamodb.get('Keys', {})
+                      new_image = dynamodb.get('NewImage', {})
+                      old_image = dynamodb.get('OldImage', {})
+                      stream_view_type = dynamodb.get('StreamViewType', '')
+
+                      # Transform to structured format
+                      transformed = {
+                          'timestamp': datetime.utcnow().isoformat() + 'Z',
+                          'eventID': event_id,
+                          'eventName': event_name,
+                          'eventSource': event_source,
+                          'awsRegion': aws_region,
+                          'tableName': dynamodb_record.get('eventSourceARN', '').split('/')[-3] if 'eventSourceARN' in dynamodb_record else '',
+                          'streamViewType': stream_view_type,
+                          'keys': keys,
+                          'newImage': new_image if event_name in ['INSERT', 'MODIFY'] else {},
+                          'oldImage': old_image if event_name in ['MODIFY', 'REMOVE'] else {},
+                          'approximateCreationDateTime': dynamodb.get('ApproximateCreationDateTime', 0),
+                          'sizeBytes': dynamodb.get('SizeBytes', 0),
+                      }
+
+                      # Encode transformed data
+                      output_data = json.dumps(transformed, cls=DecimalEncoder) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return original data if transformation fails
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output.append(output_record)
+
+              return {'records': output}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupS3Bucket.Arn
+                  - !Sub '${BackupS3Bucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'kinesis:DescribeStream'
+                  - 'kinesis:GetShardIterator'
+                  - 'kinesis:GetRecords'
+                  - 'kinesis:ListShards'
+                Resource: !GetAtt DynamoDBKinesisStream.Arn
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt StreamTransformFunction.Arn
+
+  # Kinesis Data Firehose to OpenObserve
+  OpenObserveFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - FirehoseDeliveryRole
+      - BackupS3Bucket
+    Properties:
+      DeliveryStreamName: !Sub '${AWS::StackName}-to-openobserve'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt DynamoDBKinesisStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          AccessKey: !Ref OpenObserveAccessKey
+          Name: OpenObserve
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: stream-name
+              AttributeValue: !Ref StreamName
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupS3Bucket.Arn
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          CompressionFormat: GZIP
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+          Prefix: 'failed-logs/'
+          ErrorOutputPrefix: 'error-logs/'
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt StreamTransformFunction.Arn
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+
+Outputs:
+  DynamoDBTableName:
+    Description: 'DynamoDB Table Name'
+    Value: !Ref DynamoDBTableName
+
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref DynamoDBKinesisStream
+
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt DynamoDBKinesisStream.Arn
+
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref OpenObserveFirehose
+
+  BackupS3BucketName:
+    Description: 'S3 Bucket for Failed Records'
+    Value: !Ref BackupS3Bucket
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      Kinesis stream is ready. Run this command to enable streaming from DynamoDB:
+      aws dynamodb enable-kinesis-streaming-destination --table-name ${DynamoDBTableName} --stream-arn ${DynamoDBKinesisStream.Arn}

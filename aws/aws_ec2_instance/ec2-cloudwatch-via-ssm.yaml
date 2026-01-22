@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy CloudWatch Agent to existing EC2 instances via SSM and stream to OpenObserve'
+
+Parameters:
+  TargetTagKey:
+    Type: String
+    Default: 'monitoring'
+    Description: 'EC2 tag key to identify instances'
+
+  TargetTagValue:
+    Type: String
+    Default: 'enabled'
+    Description: 'EC2 tag value to identify instances'
+
+  LogGroupPrefix:
+    Type: String
+    Default: '/aws/ec2/instances'
+    Description: 'CloudWatch Log Group prefix'
+
+Resources:
+  # SSM Document for CloudWatch Agent Installation
+  CloudWatchAgentInstallDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Name: !Sub '${AWS::StackName}-install-cw-agent'
+      DocumentType: Command
+      DocumentFormat: YAML
+      Content:
+        schemaVersion: '2.2'
+        description: 'Install and configure CloudWatch Agent'
+        parameters:
+          logGroupPrefix:
+            type: String
+            description: 'CloudWatch Log Group prefix'
+        mainSteps:
+          - action: 'aws:runShellScript'
+            name: 'installCloudWatchAgent'
+            inputs:
+              runCommand:
+                - |
+                  #!/bin/bash
+                  set -e
+
+                  echo "Installing CloudWatch Agent..."
+
+                  # Detect OS
+                  if [ -f /etc/os-release ]; then
+                      . /etc/os-release
+                      OS=$ID
+                  else
+                      OS="amzn"
+                  fi
+
+                  # Download and install
+                  cd /tmp
+                  if [[ "$OS" == "amzn" ]] || [[ "$OS" == "rhel" ]] || [[ "$OS" == "centos" ]]; then
+                      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+                      sudo rpm -U ./amazon-cloudwatch-agent.rpm || true
+                      rm -f amazon-cloudwatch-agent.rpm
+                  elif [[ "$OS" == "ubuntu" ]] || [[ "$OS" == "debian" ]]; then
+                      wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+                      sudo dpkg -i -E ./amazon-cloudwatch-agent.deb || true
+                      rm -f amazon-cloudwatch-agent.deb
+                  fi
+
+                  # Get instance metadata
+                  TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+                  INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+                  REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null)
+
+                  # Create configuration
+                  sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json > /dev/null <<EOF
+                  {
+                    "agent": {
+                      "metrics_collection_interval": 60,
+                      "run_as_user": "root"
+                    },
+                    "logs": {
+                      "logs_collected": {
+                        "files": {
+                          "collect_list": [
+                            {
+                              "file_path": "/var/log/messages",
+                              "log_group_name": "{{ logGroupPrefix }}/${INSTANCE_ID}/system",
+                              "log_stream_name": "{instance_id}/messages",
+                              "timezone": "UTC"
+                            },
+                            {
+                              "file_path": "/var/log/secure",
+                              "log_group_name": "{{ logGroupPrefix }}/${INSTANCE_ID}/system",
+                              "log_stream_name": "{instance_id}/secure",
+                              "timezone": "UTC"
+                            },
+                            {
+                              "file_path": "/var/log/syslog",
+                              "log_group_name": "{{ logGroupPrefix }}/${INSTANCE_ID}/system",
+                              "log_stream_name": "{instance_id}/syslog",
+                              "timezone": "UTC"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "metrics": {
+                      "namespace": "EC2/Custom",
+                      "metrics_collected": {
+                        "cpu": {
+                          "measurement": [
+                            {"name": "cpu_usage_idle", "unit": "Percent"},
+                            {"name": "cpu_usage_iowait", "unit": "Percent"}
+                          ],
+                          "metrics_collection_interval": 60,
+                          "totalcpu": true
+                        },
+                        "disk": {
+                          "measurement": [
+                            {"name": "used_percent", "unit": "Percent"}
+                          ],
+                          "metrics_collection_interval": 60,
+                          "resources": ["*"]
+                        },
+                        "mem": {
+                          "measurement": [
+                            {"name": "mem_used_percent", "unit": "Percent"}
+                          ],
+                          "metrics_collection_interval": 60
+                        },
+                        "netstat": {
+                          "measurement": [
+                            {"name": "tcp_established", "unit": "Count"}
+                          ],
+                          "metrics_collection_interval": 60
+                        }
+                      }
+                    }
+                  }
+                  EOF
+
+                  # Start agent
+                  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+                      -a fetch-config \
+                      -m ec2 \
+                      -s \
+                      -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+                  # Verify
+                  sleep 2
+                  STATUS=$(sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a query -m ec2 -c default | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+                  if [ "$STATUS" == "running" ]; then
+                    echo "CloudWatch Agent installed and running successfully!"
+                  else
+                    echo "ERROR: CloudWatch Agent failed to start"
+                    exit 1
+                  fi
+
+  # SSM Association to install on tagged instances
+  CloudWatchAgentAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: !Ref CloudWatchAgentInstallDocument
+      AssociationName: !Sub '${AWS::StackName}-cw-agent-installation'
+      Targets:
+        - Key: !Sub 'tag:${TargetTagKey}'
+          Values:
+            - !Ref TargetTagValue
+      Parameters:
+        logGroupPrefix:
+          - !Ref LogGroupPrefix
+      ScheduleExpression: 'rate(30 days)'
+      ComplianceSeverity: MEDIUM
+
+Outputs:
+  SSMDocumentName:
+    Description: 'SSM Document Name'
+    Value: !Ref CloudWatchAgentInstallDocument
+
+  SSMAssociationId:
+    Description: 'SSM Association ID'
+    Value: !Ref CloudWatchAgentAssociation
+
+  TargetTag:
+    Description: 'Target Instance Tag'
+    Value: !Sub '${TargetTagKey}:${TargetTagValue}'
+
+  NextSteps:
+    Description: 'Next Steps'
+    Value: !Sub |
+      1. Tag your EC2 instances with: ${TargetTagKey}=${TargetTagValue}
+         Example: aws ec2 create-tags --resources i-1234567890abcdef0 --tags Key=${TargetTagKey},Value=${TargetTagValue}
+         Example: aws ec2 create-tags --resources i-1234567890abcdef0 --tags Key=monitoring,Value=enabled
+
+      2. Ensure instances have:
+         - SSM agent installed and running
+         - IAM role with policies: AmazonSSMManagedInstanceCore, CloudWatchAgentServerPolicy
+
+      3. Run association manually:
+         aws ssm start-associations-once --association-ids ${CloudWatchAgentAssociation}
+
+      4. Check installation status:
+         aws ssm describe-instance-associations-status --instance-id <instance-id>
+
+      5. Verify CloudWatch Logs created:
+         aws logs describe-log-groups --log-group-name-prefix "${LogGroupPrefix}/"
+
+      6. Deploy CloudWatch streaming to OpenObserve:
+         cd ../aws_cloudwatch_logs && ./deploy.sh
+         Log Group: ${LogGroupPrefix}/<instance-id>/system

@@ -1,0 +1,70 @@
+name: Upload AWS Templates to S3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'aws/**/*.yaml'
+      - 'aws/**/*.yml'
+  workflow_dispatch:
+    inputs:
+      s3_bucket:
+        description: 'S3 bucket name (optional, overrides default)'
+        required: false
+        type: string
+
+env:
+  S3_BUCKET: ${{ inputs.s3_bucket || secrets.AWS_S3_BUCKET || 'openobserve-datasources-bucket' }}
+  S3_PATH: 'datasource/cloud/aws/'
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  upload-to-s3:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC authentication
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-S3Upload
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload YAML files to S3
+        run: |
+          echo "Uploading YAML files from aws/ to s3://${S3_BUCKET}/${S3_PATH}"
+          find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec basename {} \; | sort | uniq > /tmp/files.txt
+
+          # Check for duplicate filenames
+          DUPLICATES=$(find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec basename {} \; | sort | uniq -d)
+          if [ -n "$DUPLICATES" ]; then
+            echo "Error: Duplicate filenames found:"
+            echo "$DUPLICATES"
+            exit 1
+          fi
+
+          # Upload all YAML files to the S3 path (flattened, no folders)
+          find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec aws s3 cp {} s3://${S3_BUCKET}/${S3_PATH} \;
+
+      - name: Verify upload
+        run: |
+          echo "Listing uploaded files in S3:"
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(yaml|yml)$' || echo "No files found"
+
+      - name: Upload summary
+        run: |
+          echo "### S3 Upload Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket:** s3://${S3_BUCKET}/${S3_PATH}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Uploaded Files:" >> $GITHUB_STEP_SUMMARY
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(yaml|yml)$' | awk '{print "- " $4}' >> $GITHUB_STEP_SUMMARY || echo "- No files found" >> $GITHUB_STEP_SUMMARY

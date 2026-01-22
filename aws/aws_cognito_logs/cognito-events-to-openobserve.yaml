@@ -1,0 +1,390 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to capture AWS Cognito events via EventBridge and send to OpenObserve via Kinesis Firehose with Lambda transformation'
+
+Parameters:
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://your-openobserve-instance.com/api/default/cognito_logs/_json)'
+    AllowedPattern: '^https://.*'
+    ConstraintDescription: 'Must be a valid HTTPS URL'
+
+  OpenObserveAccessKey:
+    Type: String
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+    NoEcho: true
+
+  UserPoolId:
+    Type: String
+    Description: 'Cognito User Pool ID to monitor (leave empty to monitor all user pools in the region)'
+    Default: ''
+
+  StreamName:
+    Type: String
+    Description: 'Name for the Kinesis Firehose delivery stream'
+    Default: 'cognito-events-to-openobserve'
+    AllowedPattern: '[a-zA-Z0-9_.-]+'
+
+  BackupS3Prefix:
+    Type: String
+    Description: 'S3 prefix for failed records backup'
+    Default: 'cognito-events-backup/'
+
+Conditions:
+  HasUserPoolFilter: !Not [!Equals [!Ref UserPoolId, '']]
+
+Resources:
+  # S3 Bucket for failed records backup
+  BackupBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-backup-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldBackups
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # IAM Role for Lambda transformation function
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: FirehoseAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecordBatch'
+                Resource: !Sub 'arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${StreamName}'
+
+  # Lambda function for transforming Cognito events
+  TransformationLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-transform'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import json
+          import base64
+          from datetime import datetime
+
+          def lambda_handler(event, context):
+              """
+              Transform Cognito EventBridge events for OpenObserve ingestion.
+              Extracts key authentication information and structures it for analysis.
+              """
+              output_records = []
+
+              for record in event['records']:
+                  try:
+                      # Decode the incoming record
+                      payload = json.loads(base64.b64decode(record['data']).decode('utf-8'))
+
+                      # Extract Cognito event details
+                      event_detail = payload.get('detail', {})
+                      event_name = payload.get('detail-type', 'Unknown')
+                      event_time = payload.get('time', '')
+                      region = payload.get('region', '')
+                      account = payload.get('account', '')
+
+                      # Extract user pool information
+                      user_pool_id = event_detail.get('userPoolId', '')
+
+                      # Extract user information
+                      additional_event_data = event_detail.get('additionalEventData', {})
+                      request_params = event_detail.get('requestParameters', {})
+                      response_params = event_detail.get('responseParameters', {})
+
+                      # Determine event type and extract relevant data
+                      transformed_event = {
+                          'timestamp': event_time,
+                          'event_type': event_name,
+                          'region': region,
+                          'account_id': account,
+                          'user_pool_id': user_pool_id,
+                          'event_id': payload.get('id', ''),
+                          'source': payload.get('source', 'aws.cognito-idp'),
+                          'detail': {}
+                      }
+
+                      # Handle different event types
+                      if 'SignIn' in event_name or 'Authentication' in event_name:
+                          transformed_event['detail'] = {
+                              'username': event_detail.get('userName', ''),
+                              'user_id': event_detail.get('userId', ''),
+                              'success': not ('Failed' in event_name or 'Failure' in event_name),
+                              'ip_address': additional_event_data.get('ipAddress', ''),
+                              'user_agent': additional_event_data.get('userAgent', ''),
+                              'device_key': additional_event_data.get('deviceKey', ''),
+                              'error_message': event_detail.get('errorMessage', ''),
+                              'event_context_data': event_detail.get('eventContextData', {})
+                          }
+
+                      elif 'SignUp' in event_name:
+                          transformed_event['detail'] = {
+                              'username': event_detail.get('userName', ''),
+                              'user_attributes': request_params.get('userAttributes', []),
+                              'validation_data': request_params.get('validationData', []),
+                              'success': not ('Failed' in event_name or 'Failure' in event_name),
+                              'error_message': event_detail.get('errorMessage', '')
+                          }
+
+                      elif 'Password' in event_name or 'ForgotPassword' in event_name:
+                          transformed_event['detail'] = {
+                              'username': event_detail.get('userName', ''),
+                              'success': not ('Failed' in event_name or 'Failure' in event_name),
+                              'error_message': event_detail.get('errorMessage', '')
+                          }
+
+                      elif 'TokenRefresh' in event_name:
+                          transformed_event['detail'] = {
+                              'username': event_detail.get('userName', ''),
+                              'success': not ('Failed' in event_name or 'Failure' in event_name),
+                              'error_message': event_detail.get('errorMessage', '')
+                          }
+
+                      else:
+                          # Generic event handling
+                          transformed_event['detail'] = {
+                              'username': event_detail.get('userName', ''),
+                              'raw_detail': event_detail
+                          }
+
+                      # Add metadata
+                      transformed_event['processed_at'] = datetime.utcnow().isoformat() + 'Z'
+
+                      # Encode the transformed event
+                      output_data = json.dumps(transformed_event) + '\n'
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'Ok',
+                          'data': base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+                      }
+
+                  except Exception as e:
+                      print(f"Error processing record: {str(e)}")
+                      # Return the record as ProcessingFailed
+                      output_record = {
+                          'recordId': record['recordId'],
+                          'result': 'ProcessingFailed',
+                          'data': record['data']
+                      }
+
+                  output_records.append(output_record)
+
+              return {'records': output_records}
+
+  # IAM Role for Kinesis Firehose
+  FirehoseDeliveryRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !GetAtt BackupBucket.Arn
+                  - !Sub '${BackupBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !GetAtt TransformationLambda.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/*'
+
+  # Kinesis Firehose Delivery Stream
+  FirehoseDeliveryStream:
+    Type: 'AWS::KinesisFirehose::DeliveryStream'
+    DependsOn:
+      - FirehoseDeliveryRole
+      - TransformationLambda
+    Properties:
+      DeliveryStreamName: !Ref StreamName
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref OpenObserveEndpoint
+          Name: 'OpenObserve'
+          AccessKey: !Ref OpenObserveAccessKey
+        RequestConfiguration:
+          ContentEncoding: GZIP
+          CommonAttributes:
+            - AttributeName: 'source'
+              AttributeValue: 'aws-cognito'
+        BufferingHints:
+          SizeInMBs: 1
+          IntervalInSeconds: 60
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt BackupBucket.Arn
+          Prefix: !Ref BackupS3Prefix
+          CompressionFormat: GZIP
+          RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+          BufferingHints:
+            SizeInMBs: 5
+            IntervalInSeconds: 300
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt TransformationLambda.Arn
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: '3'
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: '60'
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseLogGroup
+          LogStreamName: !Ref FirehoseLogStream
+
+  # CloudWatch Log Group for Firehose
+  FirehoseLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '/aws/kinesisfirehose/${StreamName}'
+      RetentionInDays: 7
+
+  FirehoseLogStream:
+    Type: 'AWS::Logs::LogStream'
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: 'HttpEndpointDelivery'
+
+  # IAM Role for EventBridge to invoke Firehose
+  EventBridgeFirehoseRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: EventBridgeFirehosePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'firehose:PutRecord'
+                  - 'firehose:PutRecordBatch'
+                Resource: !Sub 'arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${StreamName}'
+
+  # EventBridge Rule to capture Cognito events
+  CognitoEventRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Name: !Sub '${AWS::StackName}-cognito-events'
+      Description: !If
+        - HasUserPoolFilter
+        - !Sub 'Capture Cognito events for User Pool ${UserPoolId}'
+        - 'Capture all Cognito authentication events'
+      State: ENABLED
+      EventPattern: !If
+        - HasUserPoolFilter
+        - !Sub |
+            {
+              "source": ["aws.cognito-idp"],
+              "detail": {
+                "userPoolId": ["${UserPoolId}"]
+              }
+            }
+        - |
+            {
+              "source": ["aws.cognito-idp"]
+            }
+      Targets:
+        - Arn: !GetAtt FirehoseDeliveryStream.Arn
+          Id: 'CognitoEventsFirehoseTarget'
+          RoleArn: !GetAtt EventBridgeFirehoseRole.Arn
+
+Outputs:
+  FirehoseDeliveryStreamName:
+    Description: 'Name of the Kinesis Firehose Delivery Stream'
+    Value: !Ref FirehoseDeliveryStream
+    Export:
+      Name: !Sub '${AWS::StackName}-FirehoseStreamName'
+
+  FirehoseDeliveryStreamArn:
+    Description: 'ARN of the Kinesis Firehose Delivery Stream'
+    Value: !GetAtt FirehoseDeliveryStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-FirehoseStreamArn'
+
+  BackupBucketName:
+    Description: 'S3 Bucket for failed records backup'
+    Value: !Ref BackupBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BackupBucket'
+
+  TransformationLambdaArn:
+    Description: 'ARN of the Lambda transformation function'
+    Value: !GetAtt TransformationLambda.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TransformLambdaArn'
+
+  EventBridgeRuleName:
+    Description: 'Name of the EventBridge rule'
+    Value: !Ref CognitoEventRule
+    Export:
+      Name: !Sub '${AWS::StackName}-EventRuleName'
+
+  UserPoolId:
+    Description: 'Cognito User Pool ID being monitored (empty if monitoring all pools)'
+    Value: !Ref UserPoolId
+
+  OpenObserveEndpoint:
+    Description: 'OpenObserve endpoint receiving the logs'
+    Value: !Ref OpenObserveEndpoint
