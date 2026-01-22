@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenObserve Kubernetes Collector Quick Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/openobserve/openobserve/main/deploy/k8s/install.sh | bash -s -- --cluster-name=mycluster --o2-url=https://myinstance.openobserve.ai --org-id=myorg --access-key=base64key
+# Usage: curl -sSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/k8s/install.sh | bash -s -- --cluster-name=mycluster --o2-url=https://myinstance.openobserve.ai --org-id=myorg --access-key=base64key
 
 set -e
 
@@ -14,9 +14,6 @@ OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.115.0}"
 RETRY_COUNT="${RETRY_COUNT:-3}"
 RETRY_DELAY="${RETRY_DELAY:-5}"
 OPERATION_TIMEOUT="${OPERATION_TIMEOUT:-300}"
-
-# Kubernetes version requirements (Issue 19 - Fixed)
-MIN_K8S_VERSION="1.21.0"
 
 # Default values
 CLUSTER_NAME=""
@@ -148,7 +145,7 @@ Environment Variables:
 
 Examples:
     # Basic installation
-    curl -sSL https://raw.githubusercontent.com/openobserve/openobserve/main/deploy/k8s/install.sh | bash -s -- \\
+    curl -sSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/k8s/install.sh | bash -s -- \\
       --cluster-name=production \\
       --o2-url=https://cloud.openobserve.ai \\
       --org-id=default \\
@@ -158,14 +155,14 @@ Examples:
     ./install.sh --dry-run --cluster-name=production --o2-url=https://cloud.openobserve.ai --org-id=default --access-key=base64key
 
     # Install with internal endpoint (same cluster)
-    curl -sSL https://raw.githubusercontent.com/openobserve/openobserve/main/deploy/k8s/install.sh | bash -s -- \\
+    curl -sSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/k8s/install.sh | bash -s -- \\
       --cluster-name=production \\
       --org-id=default \\
       --access-key=\$(echo -n "user@example.com:passcode" | base64) \\
       --internal-endpoint=http://o2-openobserve-router.openobserve.svc.cluster.local:5080
 
     # Skip cert-manager if already installed
-    curl -sSL https://raw.githubusercontent.com/openobserve/openobserve/main/deploy/k8s/install.sh | bash -s -- \\
+    curl -sSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/k8s/install.sh | bash -s -- \\
       --cluster-name=production \\
       --o2-url=https://cloud.openobserve.ai \\
       --org-id=default \\
@@ -190,28 +187,6 @@ validate_url() {
     if [[ ! "$url" =~ ^https?:// ]]; then
         return 1
     fi
-    return 0
-}
-
-# Compare version numbers (Issue 19 - Fixed)
-version_compare() {
-    local version1=$1
-    local version2=$2
-
-    if [[ "$version1" == "$version2" ]]; then
-        return 0
-    fi
-
-    local IFS=.
-    local i ver1=($version1) ver2=($version2)
-
-    for ((i=0; i<${#ver1[@]} || i<${#ver2[@]}; i++)); do
-        if [[ ${ver1[i]:-0} -gt ${ver2[i]:-0} ]]; then
-            return 1
-        elif [[ ${ver1[i]:-0} -lt ${ver2[i]:-0} ]]; then
-            return 2
-        fi
-    done
     return 0
 }
 
@@ -333,27 +308,8 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
-# Check Kubernetes version (Issue 19 - Fixed)
-print_info "Checking Kubernetes version..."
-K8S_VERSION=$(kubectl version --short 2>/dev/null | grep "Server Version" | sed 's/Server Version: v//' || kubectl version -o json 2>/dev/null | grep -o '"gitVersion": "v[^"]*"' | head -1 | sed 's/"gitVersion": "v//' | sed 's/"//')
-
-if [ -z "$K8S_VERSION" ]; then
-    print_error "Unable to determine Kubernetes version"
-    exit 1
-fi
-
-# Extract major.minor.patch
-K8S_VERSION_CLEAN=$(echo "$K8S_VERSION" | sed 's/-.*//')
-
-version_compare "$K8S_VERSION_CLEAN" "$MIN_K8S_VERSION"
-result=$?
-
-if [ $result -eq 2 ]; then
-    print_error "Kubernetes version $K8S_VERSION_CLEAN is below minimum required version $MIN_K8S_VERSION"
-    exit 1
-fi
-
-print_success "Kubernetes version $K8S_VERSION_CLEAN meets minimum requirement ($MIN_K8S_VERSION)"
+# Note: Kubernetes version check removed - cert-manager and operators will validate compatibility
+print_info "Skipping Kubernetes version check (components will validate compatibility)"
 
 # RBAC permission verification (Issue 20 - Fixed)
 print_info "Verifying RBAC permissions..."
@@ -451,10 +407,14 @@ if [ "$SKIP_CERT_MANAGER" = false ]; then
     # Check if cert-manager is already installed (Issue 6 - Fixed)
     if kubectl get namespace cert-manager &>/dev/null; then
         EXISTING_CM_VERSION=$(kubectl get deployment cert-manager -n cert-manager -o jsonpath='{.metadata.labels.app\.kubernetes\.io/version}' 2>/dev/null || echo "unknown")
-        print_warning "cert-manager already installed (version: $EXISTING_CM_VERSION)"
+        print_info "cert-manager already installed (version: $EXISTING_CM_VERSION)"
 
-        if [ "$EXISTING_CM_VERSION" != "unknown" ] && [ "$EXISTING_CM_VERSION" != "${CERT_MANAGER_VERSION#v}" ]; then
-            print_warning "Installed version ($EXISTING_CM_VERSION) differs from target version (${CERT_MANAGER_VERSION#v})"
+        # Normalize versions by removing 'v' prefix for comparison
+        EXISTING_CM_VERSION_CLEAN="${EXISTING_CM_VERSION#v}"
+        TARGET_CM_VERSION_CLEAN="${CERT_MANAGER_VERSION#v}"
+
+        if [ "$EXISTING_CM_VERSION" != "unknown" ] && [ "$EXISTING_CM_VERSION_CLEAN" != "$TARGET_CM_VERSION_CLEAN" ]; then
+            print_warning "Installed version ($EXISTING_CM_VERSION_CLEAN) differs from target version ($TARGET_CM_VERSION_CLEAN)"
             read -p "Skip cert-manager installation? (Y/n): " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Nn]$ ]]; then
@@ -463,7 +423,7 @@ if [ "$SKIP_CERT_MANAGER" = false ]; then
             fi
         else
             SKIP_CERT_MANAGER=true
-            print_info "Using existing cert-manager installation"
+            print_success "Using existing cert-manager installation (version matches)"
         fi
     fi
 
@@ -543,10 +503,11 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
     fi
 
     if [ "$SKIP_OTEL_OPERATOR" = false ]; then
-        retry_command "kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml"
-        retry_command "kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml"
-        retry_command "kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_scrapeconfigs.yaml"
-        retry_command "kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_probes.yaml"
+        # Use server-side apply for large CRDs to avoid annotation size limits
+        retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml"
+        retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml"
+        retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_scrapeconfigs.yaml"
+        retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_probes.yaml"
         RESOURCES_CREATED+=("Prometheus Operator CRDs")
         print_success "Prometheus operator CRDs installed"
 
@@ -579,12 +540,44 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
         # Wait for operator to be ready (Issue 15 - Fixed)
         print_info "Waiting for OpenTelemetry operator to be ready..."
         if kubectl wait --for=condition=Available --timeout=${OPERATION_TIMEOUT}s -n opentelemetry-operator-system deployment/opentelemetry-operator-controller-manager 2>/dev/null; then
-            print_success "OpenTelemetry operator is ready"
+            print_success "OpenTelemetry operator deployment is ready"
         else
             # Operator might be in different namespace or different name
             print_warning "Could not verify operator readiness with standard name. Checking operator pods..."
             sleep 30
         fi
+
+        # Wait for webhook certificates to be issued by cert-manager (critical for collector installation)
+        print_info "Waiting for OpenTelemetry operator webhook certificates to be ready..."
+        print_info "This may take up to 2 minutes while cert-manager issues certificates..."
+
+        # Wait for the webhook secret to exist
+        timeout=120
+        elapsed=0
+        webhook_ready=false
+
+        while [ $elapsed -lt $timeout ]; do
+            # Check if webhook secret exists and has data
+            if kubectl get secret -n opentelemetry-operator-system opentelemetry-operator-controller-manager-service-cert &>/dev/null; then
+                webhook_ready=true
+                print_success "Webhook certificates are ready"
+                break
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+            if [ $((elapsed % 30)) -eq 0 ]; then
+                print_info "Still waiting for webhook certificates... (${elapsed}s elapsed)"
+            fi
+        done
+
+        if [ "$webhook_ready" = false ]; then
+            print_warning "Webhook certificates not detected within timeout"
+            print_warning "Installation may fail. Consider waiting and retrying if it fails."
+        fi
+
+        # Additional wait for webhook to be fully functional
+        print_info "Waiting for webhook service to be responsive..."
+        sleep 15
     fi
 else
     print_info "Skipping OpenTelemetry operator installation (--skip-otel-operator flag set)"
@@ -613,7 +606,15 @@ while [ $elapsed -lt $timeout ]; do
 done
 
 # Create temporary values file for secure credential handling (Issue 2 - Fixed)
+# Clean up any old temp files first
+rm -f /tmp/o2c-values.*.yaml 2>/dev/null || true
+
 TEMP_VALUES_FILE=$(mktemp /tmp/o2c-values.XXXXXX.yaml)
+if [ $? -ne 0 ] || [ -z "$TEMP_VALUES_FILE" ]; then
+    print_error "Failed to create temporary values file"
+    exit 1
+fi
+
 TEMP_FILES+=("$TEMP_VALUES_FILE")
 chmod 600 "$TEMP_VALUES_FILE"
 
