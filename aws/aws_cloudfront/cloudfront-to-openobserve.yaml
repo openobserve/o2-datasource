@@ -13,7 +13,7 @@ Parameters:
 
   StreamName:
     Type: String
-    Default: 'cloudfront-logs-stream'
+    Default: 'cloudfront_access_logs'
     Description: 'Name for the OpenObserve stream'
 
   CloudFrontDistributionId:
