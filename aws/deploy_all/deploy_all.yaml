@@ -1,0 +1,1115 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Master template to deploy all OpenObserve AWS data source integrations as nested stacks.
+  Enable each service by setting the corresponding Enable* parameter to 'true' and providing
+  the required service-specific parameters. All individual templates must be uploaded to S3
+  before deploying this master stack (use deploy.sh to automate this).
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: '1. Template Storage (Required)'
+        Parameters:
+          - TemplateS3Bucket
+          - TemplateS3Prefix
+      - Label:
+          default: '2. OpenObserve Common Configuration (Required)'
+        Parameters:
+          - OpenObserveEndpoint
+          - OpenObserveAccessKey
+      - Label:
+          default: '3. Enable / Disable Services'
+        Parameters:
+          - EnableApiGateway
+          - EnableCloudFront
+          - EnableCloudWatchLogs
+          - EnableCognito
+          - EnableDynamoDB
+          - EnableEC2
+          - EnableEventBridge
+          - EnableKinesisStream
+          - EnableRDS
+          - EnableRoute53
+          - EnableS3AccessLogs
+          - EnableVPCFlowLogs
+          - EnableALB
+          - EnableCloudTrail
+          - EnableCloudWatchMetrics
+          - EnableWAF
+      - Label:
+          default: 'API Gateway Parameters'
+        Parameters:
+          - ApiGatewayId
+          - ApiGatewayStageName
+          - ApiGatewayBackupBucket
+          - ApiGatewayStreamName
+          - ApiGatewayShardCount
+      - Label:
+          default: 'CloudFront Parameters'
+        Parameters:
+          - CloudFrontDistributionId
+          - CloudFrontBackupBucket
+          - CloudFrontStreamName
+          - CloudFrontShardCount
+      - Label:
+          default: 'CloudWatch Logs Parameters'
+        Parameters:
+          - CloudWatchLogGroupName
+          - CloudWatchBackupBucket
+          - CloudWatchStreamName
+          - CloudWatchShardCount
+          - CloudWatchFilterPattern
+      - Label:
+          default: 'Cognito Parameters'
+        Parameters:
+          - CognitoUserPoolId
+          - CognitoStreamName
+      - Label:
+          default: 'DynamoDB Parameters'
+        Parameters:
+          - DynamoDBTableName
+          - DynamoDBBackupBucket
+          - DynamoDBStreamName
+          - DynamoDBShardCount
+      - Label:
+          default: 'EC2 Parameters'
+        Parameters:
+          - EC2TargetTagKey
+          - EC2TargetTagValue
+          - EC2LogGroupPrefix
+      - Label:
+          default: 'EventBridge Parameters'
+        Parameters:
+          - EventBridgeRuleName
+          - EventBridgeEventPattern
+          - EventBridgeBackupBucket
+          - EventBridgeStreamName
+      - Label:
+          default: 'Kinesis Stream Parameters'
+        Parameters:
+          - KinesisStreamArn
+          - KinesisStreamName
+      - Label:
+          default: 'RDS Parameters'
+        Parameters:
+          - RDSLogGroupName
+          - RDSBackupBucket
+          - RDSStreamName
+          - RDSFilterPattern
+          - RDSInstanceIdentifier
+      - Label:
+          default: 'Route53 Parameters'
+        Parameters:
+          - Route53HostedZoneId
+          - Route53BackupBucket
+          - Route53StreamName
+          - Route53ShardCount
+      - Label:
+          default: 'S3 Access Logs Parameters'
+        Parameters:
+          - S3SourceBucketName
+          - S3LogDestinationBucket
+          - S3AccessLogsBackupBucket
+          - S3StreamName
+          - S3LogPrefix
+      - Label:
+          default: 'VPC Flow Logs Parameters'
+        Parameters:
+          - VpcId
+          - VPCBackupBucket
+          - VPCStreamName
+          - VPCTrafficType
+      - Label:
+          default: 'ALB Parameters'
+        Parameters:
+          - ALBS3BucketName
+          - ALBAWSAccountId
+          - ALBELBAccountId
+          - ALBAccessLogsPrefix
+          - ALBConnectionLogsPrefix
+          - ALBBasicAuthUsername
+          - ALBBasicAuthPassword
+      - Label:
+          default: 'CloudTrail Parameters'
+        Parameters:
+          - CloudTrailS3BucketName
+          - CloudTrailS3BackupBucket
+      - Label:
+          default: 'CloudWatch All Metrics Parameters'
+        Parameters:
+          - CloudWatchMetricsS3BackupBucket
+      - Label:
+          default: 'WAF Parameters'
+        Parameters:
+          - WAFS3BucketName
+          - WAFS3BackupBucket
+    ParameterLabels:
+      TemplateS3Bucket:
+        default: 'S3 Bucket containing templates'
+      TemplateS3Prefix:
+        default: 'S3 key prefix (folder path)'
+      OpenObserveEndpoint:
+        default: 'OpenObserve Endpoint URL'
+      OpenObserveAccessKey:
+        default: 'OpenObserve Access Key (base64)'
+
+Parameters:
+
+  # ============================================================
+  # Template Storage
+  # ============================================================
+  TemplateS3Bucket:
+    Type: String
+    Description: 'S3 bucket name where all CloudFormation templates have been uploaded (created by deploy.sh)'
+
+  TemplateS3Prefix:
+    Type: String
+    Default: 'aws-cfn-templates'
+    Description: 'S3 key prefix (folder) where templates are stored — no trailing slash (e.g., aws-cfn-templates)'
+
+  # ============================================================
+  # Common OpenObserve Configuration
+  # ============================================================
+  OpenObserveEndpoint:
+    Type: String
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+
+  OpenObserveAccessKey:
+    Type: String
+    NoEcho: true
+    Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  # ============================================================
+  # Enable / Disable Services
+  # ============================================================
+  EnableApiGateway:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream API Gateway access logs to OpenObserve'
+
+  EnableCloudFront:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream CloudFront real-time logs to OpenObserve via Kinesis'
+
+  EnableCloudWatchLogs:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream a CloudWatch Log Group to OpenObserve via Kinesis + Firehose'
+
+  EnableCognito:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream Cognito authentication events to OpenObserve via EventBridge + Firehose'
+
+  EnableDynamoDB:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream DynamoDB change events to OpenObserve via Kinesis + Firehose'
+
+  EnableEC2:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Install CloudWatch Agent on tagged EC2 instances via SSM'
+
+  EnableEventBridge:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Forward EventBridge events to OpenObserve via Firehose'
+
+  EnableKinesisStream:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Consume an existing Kinesis Data Stream and forward to OpenObserve via Firehose'
+
+  EnableRDS:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream RDS CloudWatch logs to OpenObserve via Kinesis + Firehose'
+
+  EnableRoute53:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream Route53 DNS query logs to OpenObserve via Kinesis + Firehose'
+
+  EnableS3AccessLogs:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Process S3 server access logs and forward to OpenObserve via Lambda + Firehose'
+
+  EnableVPCFlowLogs:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream VPC Flow Logs directly to OpenObserve via Firehose'
+
+  EnableALB:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Process ALB access logs from S3 and forward to OpenObserve via Lambda'
+
+  EnableCloudTrail:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream CloudTrail logs from existing S3 bucket to OpenObserve via Lambda + Firehose'
+
+  EnableCloudWatchMetrics:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream all CloudWatch Metrics to OpenObserve via Metrics Stream + Firehose'
+
+  EnableWAF:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream WAF logs from existing S3 bucket to OpenObserve via Lambda + Firehose'
+
+  # ============================================================
+  # API Gateway Parameters
+  # ============================================================
+  ApiGatewayId:
+    Type: String
+    Default: ''
+    Description: '[API Gateway] REST API Gateway ID (required when EnableApiGateway=true)'
+
+  ApiGatewayStageName:
+    Type: String
+    Default: ''
+    Description: '[API Gateway] Stage name (e.g., prod, dev, staging)'
+
+  ApiGatewayBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[API Gateway] Globally unique S3 bucket name for failed records backup'
+
+  ApiGatewayStreamName:
+    Type: String
+    Default: 'apigateway-logs-stream'
+    Description: '[API Gateway] OpenObserve stream name'
+
+  ApiGatewayShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[API Gateway] Number of Kinesis shards'
+
+  # ============================================================
+  # CloudFront Parameters
+  # ============================================================
+  CloudFrontDistributionId:
+    Type: String
+    Default: ''
+    Description: '[CloudFront] Distribution ID (required when EnableCloudFront=true)'
+
+  CloudFrontBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[CloudFront] Globally unique S3 bucket name for failed records backup'
+
+  CloudFrontStreamName:
+    Type: String
+    Default: 'cloudfront_access_logs'
+    Description: '[CloudFront] OpenObserve stream name'
+
+  CloudFrontShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[CloudFront] Number of Kinesis shards'
+
+  # ============================================================
+  # CloudWatch Logs Parameters
+  # ============================================================
+  CloudWatchLogGroupName:
+    Type: String
+    Default: ''
+    Description: '[CloudWatch Logs] Log Group name to stream (required when EnableCloudWatchLogs=true)'
+
+  CloudWatchBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[CloudWatch Logs] Globally unique S3 bucket name for failed records backup'
+
+  CloudWatchStreamName:
+    Type: String
+    Default: 'cloudwatch-logs-stream'
+    Description: '[CloudWatch Logs] OpenObserve stream name'
+
+  CloudWatchShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[CloudWatch Logs] Number of Kinesis shards'
+
+  CloudWatchFilterPattern:
+    Type: String
+    Default: ''
+    Description: '[CloudWatch Logs] Filter pattern (leave empty to stream all logs)'
+
+  # ============================================================
+  # Cognito Parameters
+  # ============================================================
+  CognitoUserPoolId:
+    Type: String
+    Default: ''
+    Description: '[Cognito] User Pool ID to monitor (leave empty to monitor all pools)'
+
+  CognitoStreamName:
+    Type: String
+    Default: 'cognito-events-to-openobserve'
+    Description: '[Cognito] OpenObserve stream name / Firehose delivery stream name'
+
+  # ============================================================
+  # DynamoDB Parameters
+  # ============================================================
+  DynamoDBTableName:
+    Type: String
+    Default: ''
+    Description: '[DynamoDB] Existing table name to monitor (required when EnableDynamoDB=true)'
+
+  DynamoDBBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[DynamoDB] Globally unique S3 bucket name for failed records backup'
+
+  DynamoDBStreamName:
+    Type: String
+    Default: 'dynamodb-streams'
+    Description: '[DynamoDB] OpenObserve stream name'
+
+  DynamoDBShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[DynamoDB] Number of Kinesis shards'
+
+  # ============================================================
+  # EC2 Parameters
+  # ============================================================
+  EC2TargetTagKey:
+    Type: String
+    Default: 'monitoring'
+    Description: '[EC2] Tag key used to identify instances for CloudWatch Agent installation'
+
+  EC2TargetTagValue:
+    Type: String
+    Default: 'enabled'
+    Description: '[EC2] Tag value used to identify instances for CloudWatch Agent installation'
+
+  EC2LogGroupPrefix:
+    Type: String
+    Default: '/aws/ec2/instances'
+    Description: '[EC2] CloudWatch Log Group prefix for EC2 instance logs'
+
+  # ============================================================
+  # EventBridge Parameters
+  # ============================================================
+  EventBridgeRuleName:
+    Type: String
+    Default: ''
+    Description: '[EventBridge] Rule name (required when EnableEventBridge=true)'
+
+  EventBridgeEventPattern:
+    Type: String
+    Default: '{"source": ["aws.ec2"]}'
+    Description: '[EventBridge] Event pattern JSON string (required when EnableEventBridge=true)'
+
+  EventBridgeBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[EventBridge] Globally unique S3 bucket name for failed records backup'
+
+  EventBridgeStreamName:
+    Type: String
+    Default: 'eventbridge-events'
+    Description: '[EventBridge] OpenObserve stream name'
+
+  # ============================================================
+  # Kinesis Stream Parameters
+  # ============================================================
+  KinesisStreamArn:
+    Type: String
+    Default: 'arn:aws:kinesis:us-east-1:000000000000:stream/placeholder'
+    Description: '[Kinesis] ARN of an existing Kinesis Data Stream (required when EnableKinesisStream=true)'
+
+  KinesisStreamName:
+    Type: String
+    Default: 'default/kinesis_logs'
+    Description: '[Kinesis] OpenObserve organization/stream name'
+
+  # ============================================================
+  # RDS Parameters
+  # ============================================================
+  RDSLogGroupName:
+    Type: String
+    Default: ''
+    Description: '[RDS] CloudWatch Log Group for RDS logs, e.g. /aws/rds/instance/my-db/error (required when EnableRDS=true)'
+
+  RDSBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[RDS] Globally unique S3 bucket name for failed records backup'
+
+  RDSStreamName:
+    Type: String
+    Default: 'rds-logs'
+    Description: '[RDS] OpenObserve stream name'
+
+  RDSFilterPattern:
+    Type: String
+    Default: ''
+    Description: '[RDS] CloudWatch Logs filter pattern (leave empty to stream all logs)'
+
+  RDSInstanceIdentifier:
+    Type: String
+    Default: ''
+    Description: '[RDS] RDS instance identifier (optional, used for tagging)'
+
+  # ============================================================
+  # Route53 Parameters
+  # ============================================================
+  Route53HostedZoneId:
+    Type: String
+    Default: 'Z0PLACEHOLDER00000000'
+    Description: '[Route53] Hosted Zone ID (required when EnableRoute53=true, must start with Z)'
+
+  Route53BackupBucket:
+    Type: String
+    Default: ''
+    Description: '[Route53] Globally unique S3 bucket name for failed records backup'
+
+  Route53StreamName:
+    Type: String
+    Default: 'route53-query-logs'
+    Description: '[Route53] OpenObserve stream name'
+
+  Route53ShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[Route53] Number of Kinesis shards'
+
+  # ============================================================
+  # S3 Access Logs Parameters
+  # ============================================================
+  S3SourceBucketName:
+    Type: String
+    Default: ''
+    Description: '[S3 Access Logs] Source bucket to monitor for access logs (required when EnableS3AccessLogs=true)'
+
+  S3LogDestinationBucket:
+    Type: String
+    Default: ''
+    Description: '[S3 Access Logs] Globally unique bucket name where S3 access log files will be delivered'
+
+  S3AccessLogsBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[S3 Access Logs] Globally unique S3 bucket name for Firehose failed records backup'
+
+  S3StreamName:
+    Type: String
+    Default: 's3-access-logs-stream'
+    Description: '[S3 Access Logs] OpenObserve stream name'
+
+  S3LogPrefix:
+    Type: String
+    Default: 's3-access-logs/'
+    Description: '[S3 Access Logs] S3 key prefix for access log files'
+
+  # ============================================================
+  # VPC Flow Logs Parameters
+  # ============================================================
+  VpcId:
+    Type: String
+    Default: ''
+    Description: '[VPC Flow Logs] VPC ID to capture flow logs from (required when EnableVPCFlowLogs=true)'
+
+  VPCBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[VPC Flow Logs] Globally unique S3 bucket name for failed records backup'
+
+  VPCStreamName:
+    Type: String
+    Default: 'vpc-flow-logs-stream'
+    Description: '[VPC Flow Logs] OpenObserve stream name'
+
+  VPCTrafficType:
+    Type: String
+    Default: 'ALL'
+    AllowedValues: ['ALL', 'ACCEPT', 'REJECT']
+    Description: '[VPC Flow Logs] Traffic type to capture'
+
+  # ============================================================
+  # ALB Parameters
+  # ============================================================
+  ALBS3BucketName:
+    Type: String
+    Default: ''
+    Description: '[ALB] S3 bucket name for ALB access logs (required when EnableALB=true)'
+
+  ALBAWSAccountId:
+    Type: String
+    Default: ''
+    Description: '[ALB] AWS Account ID where the ALB resides'
+
+  ALBELBAccountId:
+    Type: String
+    Default: ''
+    Description: '[ALB] ELB service account ID for your region (see https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html)'
+
+  ALBAccessLogsPrefix:
+    Type: String
+    Default: 'access-logs'
+    Description: '[ALB] S3 prefix folder for ALB access logs'
+
+  ALBConnectionLogsPrefix:
+    Type: String
+    Default: 'connection-logs'
+    Description: '[ALB] S3 prefix folder for ALB connection logs'
+
+  ALBBasicAuthUsername:
+    Type: String
+    Default: ''
+    Description: '[ALB] OpenObserve username for basic auth (required when EnableALB=true)'
+
+  ALBBasicAuthPassword:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: '[ALB] OpenObserve password for basic auth (required when EnableALB=true)'
+
+  # ============================================================
+  # CloudTrail Parameters
+  # ============================================================
+  CloudTrailS3BucketName:
+    Type: String
+    Default: ''
+    Description: '[CloudTrail] Name of existing CloudTrail S3 bucket (required when EnableCloudTrail=true)'
+
+  CloudTrailS3BackupBucket:
+    Type: String
+    Default: ''
+    Description: '[CloudTrail] S3 bucket for Firehose backup (can be same as CloudTrail bucket)'
+
+  # ============================================================
+  # CloudWatch All Metrics Parameters
+  # ============================================================
+  CloudWatchMetricsS3BackupBucket:
+    Type: String
+    Default: ''
+    Description: '[CloudWatch Metrics] S3 bucket name for Firehose backup (required when EnableCloudWatchMetrics=true)'
+
+  # ============================================================
+  # WAF Parameters
+  # ============================================================
+  WAFS3BucketName:
+    Type: String
+    Default: ''
+    Description: '[WAF] Name of existing WAF S3 bucket (required when EnableWAF=true)'
+
+  WAFS3BackupBucket:
+    Type: String
+    Default: ''
+    Description: '[WAF] S3 bucket for Firehose backup (can be same as WAF bucket)'
+
+
+Conditions:
+  DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
+  DeployCloudFront:       !Equals [!Ref EnableCloudFront, 'true']
+  DeployCloudWatchLogs:   !Equals [!Ref EnableCloudWatchLogs, 'true']
+  DeployCognito:          !Equals [!Ref EnableCognito, 'true']
+  DeployDynamoDB:         !Equals [!Ref EnableDynamoDB, 'true']
+  DeployEC2:              !Equals [!Ref EnableEC2, 'true']
+  DeployEventBridge:      !Equals [!Ref EnableEventBridge, 'true']
+  DeployKinesisStream:    !Equals [!Ref EnableKinesisStream, 'true']
+  DeployRDS:              !Equals [!Ref EnableRDS, 'true']
+  DeployRoute53:          !Equals [!Ref EnableRoute53, 'true']
+  DeployS3AccessLogs:     !Equals [!Ref EnableS3AccessLogs, 'true']
+  DeployVPCFlowLogs:      !Equals [!Ref EnableVPCFlowLogs, 'true']
+  DeployALB:              !Equals [!Ref EnableALB, 'true']
+  DeployCloudTrail:       !Equals [!Ref EnableCloudTrail, 'true']
+  DeployCloudWatchMetrics: !Equals [!Ref EnableCloudWatchMetrics, 'true']
+  DeployWAF:              !Equals [!Ref EnableWAF, 'true']
+
+
+Resources:
+
+  # ============================================================
+  # API Gateway Logs
+  # ============================================================
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployApiGateway
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_api_gateway_logs/apigateway-logs-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        ApiGatewayId: !Ref ApiGatewayId
+        StageName: !Ref ApiGatewayStageName
+        BackupS3BucketName: !Ref ApiGatewayBackupBucket
+        StreamName: !Ref ApiGatewayStreamName
+        ShardCount: !Ref ApiGatewayShardCount
+        FilterPattern: ''
+        EnableAccessLogging: 'false'
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: api-gateway
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # CloudFront Real-time Logs
+  # ============================================================
+  CloudFrontStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCloudFront
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cloudfront/cloudfront-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        CloudFrontDistributionId: !Ref CloudFrontDistributionId
+        BackupS3BucketName: !Ref CloudFrontBackupBucket
+        StreamName: !Ref CloudFrontStreamName
+        ShardCount: !Ref CloudFrontShardCount
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: cloudfront
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # CloudWatch Logs
+  # ============================================================
+  CloudWatchLogsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCloudWatchLogs
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        LogGroupName: !Ref CloudWatchLogGroupName
+        BackupS3BucketName: !Ref CloudWatchBackupBucket
+        StreamName: !Ref CloudWatchStreamName
+        ShardCount: !Ref CloudWatchShardCount
+        FilterPattern: !Ref CloudWatchFilterPattern
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: cloudwatch-logs
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # Cognito Events
+  # ============================================================
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCognito
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cognito_logs/cognito-events-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        UserPoolId: !Ref CognitoUserPoolId
+        StreamName: !Ref CognitoStreamName
+        BackupS3Prefix: 'cognito-events-backup/'
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: cognito
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # DynamoDB Streams
+  # ============================================================
+  DynamoDBStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployDynamoDB
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_dynamodb_logs/dynamodb-streams-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        DynamoDBTableName: !Ref DynamoDBTableName
+        BackupS3BucketName: !Ref DynamoDBBackupBucket
+        StreamName: !Ref DynamoDBStreamName
+        ShardCount: !Ref DynamoDBShardCount
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: dynamodb
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # EC2 — CloudWatch Agent via SSM
+  # ============================================================
+  EC2Stack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployEC2
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_ec2_instance/ec2-cloudwatch-via-ssm.yaml'
+      Parameters:
+        TargetTagKey: !Ref EC2TargetTagKey
+        TargetTagValue: !Ref EC2TargetTagValue
+        LogGroupPrefix: !Ref EC2LogGroupPrefix
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: ec2
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # EventBridge Events
+  # ============================================================
+  EventBridgeStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployEventBridge
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_eventbridge_events/eventbridge-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        RuleName: !Ref EventBridgeRuleName
+        EventPattern: !Ref EventBridgeEventPattern
+        BackupS3BucketName: !Ref EventBridgeBackupBucket
+        StreamName: !Ref EventBridgeStreamName
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: eventbridge
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # Kinesis Data Stream → OpenObserve
+  # ============================================================
+  KinesisStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployKinesisStream
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_kinesis_streams/kinesis-to-openobserve-firehose.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        KinesisStreamArn: !Ref KinesisStreamArn
+        StreamName: !Ref KinesisStreamName
+        EnableTransformation: 'false'
+        BufferIntervalSeconds: 60
+        BufferSizeMB: 5
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: kinesis-stream
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # RDS Logs
+  # ============================================================
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployRDS
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_rds_logs/rds-logs-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        LogGroupName: !Ref RDSLogGroupName
+        BackupS3BucketName: !Ref RDSBackupBucket
+        StreamName: !Ref RDSStreamName
+        ShardCount: 1
+        FilterPattern: !Ref RDSFilterPattern
+        RDSInstanceIdentifier: !Ref RDSInstanceIdentifier
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: rds
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # Route53 Query Logs
+  # ============================================================
+  Route53Stack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployRoute53
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_route53_logs/route53-logs-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        HostedZoneId: !Ref Route53HostedZoneId
+        BackupS3BucketName: !Ref Route53BackupBucket
+        StreamName: !Ref Route53StreamName
+        ShardCount: !Ref Route53ShardCount
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: route53
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # S3 Access Logs
+  # ============================================================
+  S3AccessLogsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployS3AccessLogs
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_s3_access_logs/s3-access-logs-to-openobserve.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        SourceBucketName: !Ref S3SourceBucketName
+        LogDestinationBucketName: !Ref S3LogDestinationBucket
+        BackupS3BucketName: !Ref S3AccessLogsBackupBucket
+        StreamName: !Ref S3StreamName
+        LogPrefix: !Ref S3LogPrefix
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: s3-access-logs
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # VPC Flow Logs (Direct Firehose — Recommended)
+  # ============================================================
+  VPCFlowLogsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployVPCFlowLogs
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_vpc_flow_logs/vpc-flowlogs-to-openobserve-firehose.yaml'
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        VpcId: !Ref VpcId
+        BackupS3BucketName: !Ref VPCBackupBucket
+        StreamName: !Ref VPCStreamName
+        TrafficType: !Ref VPCTrafficType
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: vpc-flow-logs
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # ALB Logs
+  # ============================================================
+  ALBStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployALB
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_alb/aws_alb.yaml'
+      Parameters:
+        S3BucketName: !Ref ALBS3BucketName
+        AWSAccountId: !Ref ALBAWSAccountId
+        ELBAccountId: !Ref ALBELBAccountId
+        AccessLogsPrefix: !Ref ALBAccessLogsPrefix
+        ConnectionLogsPrefix: !Ref ALBConnectionLogsPrefix
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        BasicAuthUsername: !Ref ALBBasicAuthUsername
+        BasicAuthPassword: !Ref ALBBasicAuthPassword
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: alb
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # CloudTrail Logs
+  # ============================================================
+  CloudTrailStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCloudTrail
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/cloudtrail_o2/cloudtrail_o2.yaml'
+      Parameters:
+        HttpEndpointName: 'OpenObserve-CloudTrail'
+        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        AccessKey: !Ref OpenObserveAccessKey
+        S3BucketCloudTrailName: !Ref CloudTrailS3BucketName
+        S3BackupBucket: !Ref CloudTrailS3BackupBucket
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: cloudtrail
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # CloudWatch All Metrics Stream
+  # ============================================================
+  CloudWatchMetricsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCloudWatchMetrics
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/CloudWatch_All_Metrics/CloudWatch_All_Metrics.yaml'
+      Parameters:
+        HttpEndpointName: 'OpenObserve-Metrics'
+        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        AccessKey: !Ref OpenObserveAccessKey
+        S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: cloudwatch-metrics
+        - Key: ManagedBy
+          Value: deploy-all
+
+  # ============================================================
+  # WAF Logs
+  # ============================================================
+  WAFStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployWAF
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/cloudformation_waf/cloudformation_waf.yaml'
+      Parameters:
+        HttpEndpointName: 'OpenObserve-WAF'
+        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        AccessKey: !Ref OpenObserveAccessKey
+        S3BucketWAFName: !Ref WAFS3BucketName
+        S3BackupBucket: !Ref WAFS3BackupBucket
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Service
+          Value: waf
+        - Key: ManagedBy
+          Value: deploy-all
+
+
+Outputs:
+
+  ApiGatewayStackId:
+    Condition: DeployApiGateway
+    Description: 'API Gateway nested stack ID'
+    Value: !Ref ApiGatewayStack
+
+  CloudFrontStackId:
+    Condition: DeployCloudFront
+    Description: 'CloudFront nested stack ID'
+    Value: !Ref CloudFrontStack
+
+  CloudWatchLogsStackId:
+    Condition: DeployCloudWatchLogs
+    Description: 'CloudWatch Logs nested stack ID'
+    Value: !Ref CloudWatchLogsStack
+
+  CognitoStackId:
+    Condition: DeployCognito
+    Description: 'Cognito nested stack ID'
+    Value: !Ref CognitoStack
+
+  DynamoDBStackId:
+    Condition: DeployDynamoDB
+    Description: 'DynamoDB nested stack ID'
+    Value: !Ref DynamoDBStack
+
+  EC2StackId:
+    Condition: DeployEC2
+    Description: 'EC2 CloudWatch Agent nested stack ID'
+    Value: !Ref EC2Stack
+
+  EventBridgeStackId:
+    Condition: DeployEventBridge
+    Description: 'EventBridge nested stack ID'
+    Value: !Ref EventBridgeStack
+
+  KinesisStackId:
+    Condition: DeployKinesisStream
+    Description: 'Kinesis Stream nested stack ID'
+    Value: !Ref KinesisStack
+
+  RDSStackId:
+    Condition: DeployRDS
+    Description: 'RDS nested stack ID'
+    Value: !Ref RDSStack
+
+  Route53StackId:
+    Condition: DeployRoute53
+    Description: 'Route53 nested stack ID'
+    Value: !Ref Route53Stack
+
+  S3AccessLogsStackId:
+    Condition: DeployS3AccessLogs
+    Description: 'S3 Access Logs nested stack ID'
+    Value: !Ref S3AccessLogsStack
+
+  VPCFlowLogsStackId:
+    Condition: DeployVPCFlowLogs
+    Description: 'VPC Flow Logs nested stack ID'
+    Value: !Ref VPCFlowLogsStack
+
+  ALBStackId:
+    Condition: DeployALB
+    Description: 'ALB nested stack ID'
+    Value: !Ref ALBStack
+
+  CloudTrailStackId:
+    Condition: DeployCloudTrail
+    Description: 'CloudTrail nested stack ID'
+    Value: !Ref CloudTrailStack
+
+  CloudWatchMetricsStackId:
+    Condition: DeployCloudWatchMetrics
+    Description: 'CloudWatch Metrics nested stack ID'
+    Value: !Ref CloudWatchMetricsStack
+
+  WAFStackId:
+    Condition: DeployWAF
+    Description: 'WAF nested stack ID'
+    Value: !Ref WAFStack
+
+  DeployedServices:
+    Description: 'Comma-separated list of deployed service integrations'
+    Value: !Join
+      - ', '
+      - - !If [DeployApiGateway,       'API Gateway',         !Ref AWS::NoValue]
+        - !If [DeployCloudFront,       'CloudFront',          !Ref AWS::NoValue]
+        - !If [DeployCloudWatchLogs,   'CloudWatch Logs',     !Ref AWS::NoValue]
+        - !If [DeployCognito,          'Cognito',             !Ref AWS::NoValue]
+        - !If [DeployDynamoDB,         'DynamoDB',            !Ref AWS::NoValue]
+        - !If [DeployEC2,              'EC2',                 !Ref AWS::NoValue]
+        - !If [DeployEventBridge,      'EventBridge',         !Ref AWS::NoValue]
+        - !If [DeployKinesisStream,    'Kinesis Stream',      !Ref AWS::NoValue]
+        - !If [DeployRDS,              'RDS',                 !Ref AWS::NoValue]
+        - !If [DeployRoute53,          'Route53',             !Ref AWS::NoValue]
+        - !If [DeployS3AccessLogs,     'S3 Access Logs',      !Ref AWS::NoValue]
+        - !If [DeployVPCFlowLogs,      'VPC Flow Logs',       !Ref AWS::NoValue]
+        - !If [DeployALB,              'ALB',                 !Ref AWS::NoValue]
+        - !If [DeployCloudTrail,       'CloudTrail',          !Ref AWS::NoValue]
+        - !If [DeployCloudWatchMetrics,'CloudWatch Metrics',  !Ref AWS::NoValue]
+        - !If [DeployWAF,              'WAF',                 !Ref AWS::NoValue]

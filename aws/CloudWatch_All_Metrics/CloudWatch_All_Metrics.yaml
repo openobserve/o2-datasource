@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation stack for streaming CloudWatch Metrics to OpenObserve via Kinesis Firehose.
+
+Parameters:
+  HttpEndpointName:
+    Type: String
+    Description: Name of the HTTP endpoint for Kinesis Firehose.
+  AccessKey:
+    Type: String
+    Description: Access key for authentication with the HTTP endpoint.
+  HttpEndpointUrl:
+    Type: String
+    Description: URL of the HTTP endpoint for Kinesis Firehose.
+  S3BackupBucket:
+    Type: String
+    Description: Name of the S3 bucket for Firehose backup.
+
+Resources:
+  # IAM Role for CloudWatch Metrics Stream
+  MetricsStreamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "CloudWatchMetricsStreamRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: streams.metrics.cloudwatch.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: MetricsStreamPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: !Sub "arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${KinesisFirehose}"
+
+  # IAM Role for Kinesis Firehose
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}"
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                Resource: "*"
+
+  # CloudWatch Metrics Stream
+  MetricsStream:
+    Type: AWS::CloudWatch::MetricStream
+    Properties:
+      Name: !Sub "MetricsStream-${AWS::StackName}"
+      FirehoseArn: !GetAtt KinesisFirehose.Arn
+      RoleArn: !GetAtt MetricsStreamRole.Arn
+#      IncludeFilters:
+#        - Namespace: "AWS/*"
+      OutputFormat: opentelemetry1.0
+
+  # Kinesis Firehose Delivery Stream
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref HttpEndpointUrl
+          Name: !Ref HttpEndpointName
+          AccessKey: !Ref AccessKey
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          RoleARN: !GetAtt FirehoseRole.Arn
+          BucketARN: !Sub "arn:aws:s3:::${S3BackupBucket}"
+          Prefix: OpenObserve_Metrics/
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_Metrics"
+          LogStreamName: DeliveryStreamLogs
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+Outputs:
+  MetricsStreamName:
+    Description: Name of the CloudWatch Metrics Stream.
+    Value: !Ref MetricsStream
+  KinesisFirehoseName:
+    Description: Name of the Kinesis Firehose.
+    Value: !Ref KinesisFirehose
+  BackupBucketName:
+    Description: Name of the backup bucket being used.
+    Value: !Ref S3BackupBucket

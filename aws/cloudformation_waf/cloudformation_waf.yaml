@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation stack for sending AWS WAF logs to OpenObserve via Kinesis Firehose.
+
+Parameters:
+  HttpEndpointName:
+    Type: String
+    Description: Name of the HTTP endpoint for Kinesis Firehose.
+  AccessKey:
+    Type: String
+    Description: Access key for authentication with the HTTP endpoint.
+  HttpEndpointUrl:
+    Type: String
+    Description: URL of the HTTP endpoint for Kinesis Firehose.
+  S3BucketWAFName:
+    Type: String
+    Description: Name of the existing AWS WAF S3 bucket.
+  S3BackupBucket:
+    Type: String
+    Description: Name of the S3 bucket for Firehose backup. This must either be the same as the WAF bucket or a separate bucket.
+
+Resources:
+  # IAM Role for Kinesis Firehose
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}"
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                Resource: "*"
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_LambdaRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketWAFName}"
+                  - !Sub "arn:aws:s3:::${S3BucketWAFName}/*"
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function
+  WAFProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "OpenObserve_WAFProcessor-${AWS::StackName}"
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          HttpEndpointName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import gzip
+          from io import BytesIO
+          import os
+          
+          def handler(event, context):
+              s3_client = boto3.client('s3')
+              firehose_client = boto3.client('firehose')
+              firehose_stream_name = os.environ['HttpEndpointName']
+          
+              for record in event['Records']:
+                  bucket_name = record['s3']['bucket']['name']
+                  object_key = record['s3']['object']['key']
+                  
+                  try:
+                      response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+                      compressed_data = response['Body'].read()
+                      
+                      with gzip.GzipFile(fileobj=BytesIO(compressed_data)) as gzipfile:
+                          log_data = gzipfile.read().decode('utf-8')
+                      
+                      for log_entry in log_data.splitlines():
+                          firehose_client.put_record(
+                              DeliveryStreamName=firehose_stream_name,
+                              Record={"Data": log_entry + "\n"}
+                          )
+                  except Exception as e:
+                      print(f"Error processing file {object_key}: {str(e)}")
+              
+              return {"statusCode": 200, "body": "Processed files successfully"}
+
+  # Lambda Permission for S3
+  LambdaPermissionForS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt WAFProcessorLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${S3BucketWAFName}"
+
+  # Kinesis Firehose Delivery Stream
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref HttpEndpointUrl
+          Name: !Ref HttpEndpointName
+          AccessKey: !Ref AccessKey
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          RoleARN: !GetAtt FirehoseRole.Arn
+          BucketARN: !Sub "arn:aws:s3:::${S3BackupBucket}"
+          Prefix: OpenObserve_WAF/
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_WAF"
+          LogStreamName: DeliveryStreamLogs
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+Outputs:
+  LambdaFunctionARN:
+    Description: ARN of the created Lambda function.
+    Value: !GetAtt WAFProcessorLambda.Arn
+  KinesisFirehoseName:
+    Description: Name of the Kinesis Firehose.
+    Value: !Ref KinesisFirehose
+  S3NotificationBucket:
+    Description: Name of the S3 bucket configured for event notification.
+    Value: !Ref S3BucketWAFName
+  BackupBucketName:
+    Description: Name of the backup bucket being used.
+    Value: !Ref S3BackupBucket

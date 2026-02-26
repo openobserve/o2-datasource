@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation stack for sending CloudTrail logs to OpenObserve via Kinesis Firehose.
+
+Parameters:
+  HttpEndpointName:
+    Type: String
+    Description: Name of the HTTP endpoint for Kinesis Firehose.
+  AccessKey:
+    Type: String
+    Description: Access key for authentication with the HTTP endpoint.
+  HttpEndpointUrl:
+    Type: String
+    Description: URL of the HTTP endpoint for Kinesis Firehose.
+  S3BucketCloudTrailName:
+    Type: String
+    Description: Name of the existing CloudTrail S3 bucket.
+  S3BackupBucket:
+    Type: String
+    Description: Name of the S3 bucket for Firehose backup. This must either be the same as the CloudTrail bucket or a separate bucket.
+
+Resources:
+  # IAM Role for Kinesis Firehose
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}"
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                Resource: "*"
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_LambdaRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketCloudTrailName}"
+                  - !Sub "arn:aws:s3:::${S3BucketCloudTrailName}/*"
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function
+  CloudTrailProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "OpenObserve_Processor-${AWS::StackName}"
+      Handler: index.handler
+      Runtime: python3.13
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          HttpEndpointName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      RecursiveLoop: Terminate
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import gzip
+          from io import BytesIO
+          import os
+          
+          def handler(event, context):
+              s3_client = boto3.client('s3')
+              firehose_client = boto3.client('firehose')
+              firehose_stream_name = os.environ['HttpEndpointName']
+          
+              for record in event['Records']:
+                  # Extract bucket name and object key
+                  s3_event = record['s3']
+                  bucket_name = s3_event['bucket']['name']
+                  object_key = s3_event['object']['key']
+                  
+                  try:
+                      # Download the .json.gz file from S3
+                      response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+                      compressed_data = response['Body'].read()
+                      
+                      # Decompress the .gz file
+                      with gzip.GzipFile(fileobj=BytesIO(compressed_data)) as gzipfile:
+                          extracted_data = gzipfile.read().decode('utf-8')
+                      
+                      # Parse the JSON content
+                      json_data = json.loads(extracted_data)
+                      
+                      # Check for "Records" array or digest metadata
+                      if isinstance(json_data, dict) and "Records" in json_data:
+                          for single_record in json_data["Records"]:
+                              # Send each record individually to Firehose
+                              firehose_client.put_record(
+                                  DeliveryStreamName=firehose_stream_name,
+                                  Record={"Data": json.dumps(single_record) + "\n"}
+                              )
+                      elif "digestS3Bucket" in json_data and "digestS3Object" in json_data:
+                          # Handle digest files separately
+                          print(f"Digest file detected and skipped: {object_key}")
+                      else:
+                          # Log unexpected data format
+                          print(f"Unexpected data format: {json_data}")
+          
+                  except Exception as e:
+                      # Log any errors during processing
+                      print(f"Error processing file {object_key} from bucket {bucket_name}: {str(e)}")
+              
+              return {"statusCode": 200, "body": "Processed files successfully"}
+                
+
+  # Lambda Permission for S3
+  LambdaPermissionForS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CloudTrailProcessorLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${S3BucketCloudTrailName}"
+
+#  # S3 Bucket
+#  S3BucketCloudTrail:
+#    Type: AWS::S3::Bucket
+#    Properties:
+#      BucketName: !Ref S3BucketCloudTrailName
+#      NotificationConfiguration:
+#        LambdaConfigurations:
+#          - Event: s3:ObjectCreated:*
+#            Function: !GetAtt CloudTrailProcessorLambda.Arn
+
+  # Kinesis Firehose Delivery Stream
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref HttpEndpointUrl
+          Name: !Ref HttpEndpointName
+          AccessKey: !Ref AccessKey
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          RoleARN: !GetAtt FirehoseRole.Arn
+          BucketARN: !Sub "arn:aws:s3:::${S3BackupBucket}"
+          Prefix: OpenObserve_CloudTrail/
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_CloudTrail"
+          LogStreamName: DeliveryStreamLogs
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+Outputs:
+  LambdaFunctionARN:
+    Description: ARN of the created Lambda function.
+    Value: !GetAtt CloudTrailProcessorLambda.Arn
+  KinesisFirehoseName:
+    Description: Name of the Kinesis Firehose.
+    Value: !Ref KinesisFirehose
+  S3NotificationBucket:
+    Description: Name of the S3 bucket configured for event notification.
+    Value: !Ref S3BucketCloudTrailName
+  BackupBucketName:
+    Description: Name of the backup bucket being used.
+    Value: !Ref S3BackupBucket
