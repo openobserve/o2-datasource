@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Minimal CloudFormation template with example S3 bucket
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  ProjectName:
+    Type: String
+    Default: my-project
+    Description: Project name for resource tagging
+
+Resources:
+  ExampleBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-${AWS::AccountId}'
+      Tags:
+        - Key: ManagedBy
+          Value: ops0
+        - Key: ManagedIaC
+          Value: cloudformation
+        - Key: ops0:conversationID
+          Value: 'a8403511-6cf8-4f95-95f0-33244346286b'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  BucketName:
+    Description: Name of the example S3 bucket
+    Value: !Ref ExampleBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
