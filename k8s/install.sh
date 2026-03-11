@@ -337,7 +337,28 @@ print_success "RBAC permissions verified"
 if [[ "$ENDPOINT" =~ ^https?:// ]]; then
     print_info "Checking endpoint reachability: $ENDPOINT"
     if command -v curl &> /dev/null; then
-        if ! curl -sSf -m 10 -o /dev/null "$ENDPOINT" && ! curl -sSf -m 10 -o /dev/null "$ENDPOINT/healthz" && ! curl -sSf -m 10 -o /dev/null "$ENDPOINT/api/$ORG_ID" 2>/dev/null; then
+        endpoint_reachable=false
+
+        # Try multiple endpoints and check HTTP status codes
+        # 200-299: Success
+        # 401/403: Endpoint exists but requires auth (expected for API endpoints)
+        # 404/5xx: Endpoint doesn't exist or server error
+        for test_path in "" "/healthz" "/api/$ORG_ID"; do
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$ENDPOINT$test_path" 2>/dev/null || echo "000")
+
+            # Treat 2xx, 401, and 403 as reachable
+            if [[ "$http_code" =~ ^(2[0-9][0-9]|401|403)$ ]]; then
+                endpoint_reachable=true
+                if [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
+                    print_success "Endpoint is reachable (HTTP $http_code - requires authentication)"
+                else
+                    print_success "Endpoint is reachable (HTTP $http_code)"
+                fi
+                break
+            fi
+        done
+
+        if [ "$endpoint_reachable" = false ]; then
             print_warning "Cannot reach endpoint $ENDPOINT. Installation will proceed but data export may fail."
             print_info "Please verify:"
             print_info "  1. The endpoint URL is correct"
@@ -348,8 +369,6 @@ if [[ "$ENDPOINT" =~ ^https?:// ]]; then
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                 exit 1
             fi
-        else
-            print_success "Endpoint is reachable"
         fi
     else
         print_warning "curl not found, skipping endpoint reachability check"
