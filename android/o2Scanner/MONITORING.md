@@ -118,7 +118,7 @@ service.name: "o2-scanner-mobile"
 httpExport {
     baseUrl = "https://introspection.dev.zinclabs.dev/api/default"
     baseHeaders = mapOf(
-        "Authorization" to "Basic aW50cm9zcGVjdGlvbnJvb3RAb3Blbm9ic2VydmUuYWk6MVpSZGoxRHdpRTVkN0tJVQ==",
+        "Authorization" to "Basic YOUR_BASE64_ENCODED_TOKEN_HERE",
         "stream-name" to "o2scanner"
     )
 }
