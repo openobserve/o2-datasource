@@ -1,0 +1,290 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.o2.scanner"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="23"
+9        android:targetSdkVersion="34" />
+10
+11    <!-- Camera permission -->
+12    <uses-permission android:name="android.permission.CAMERA" />
+12-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:5:5-65
+12-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:5:22-62
+13
+14    <!-- Camera feature (required) -->
+15    <uses-feature
+15-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:8:5-10:35
+16        android:name="android.hardware.camera"
+16-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:9:9-47
+17        android:required="true" />
+17-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:10:9-32
+18    <uses-feature
+18-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:11:5-13:36
+19        android:name="android.hardware.camera.autofocus"
+19-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:12:9-57
+20        android:required="false" />
+20-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:13:9-33
+21
+22    <!-- Vibration permission (for scan feedback) -->
+23    <uses-permission android:name="android.permission.VIBRATE" />
+23-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:16:5-66
+23-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:16:22-63
+24
+25    <!-- Internet permission (for sending telemetry) -->
+26    <uses-permission android:name="android.permission.INTERNET" />
+26-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:19:5-67
+26-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:19:22-64
+27    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+27-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:20:5-79
+27-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:20:22-76
+28
+29    <permission
+29-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+30        android:name="com.o2.scanner.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+30-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+31        android:protectionLevel="signature" />
+31-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+32
+33    <uses-permission android:name="com.o2.scanner.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+33-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+33-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+34
+35    <application
+35-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:22:5-45:19
+36        android:name="com.o2.scanner.ScannerApplication"
+36-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:23:9-43
+37        android:allowBackup="true"
+37-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:24:9-35
+38        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+38-->[androidx.core:core:1.12.0] /Users/mdmosaraf/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+39        android:debuggable="true"
+40        android:extractNativeLibs="false"
+41        android:icon="@mipmap/ic_launcher"
+41-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:25:9-43
+42        android:label="@string/app_name"
+42-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:26:9-41
+43        android:supportsRtl="true"
+43-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:27:9-35
+44        android:testOnly="true"
+45        android:theme="@style/Theme.O2Scanner" >
+45-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:28:9-47
+46        <activity
+46-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:30:9-38:20
+47            android:name="com.o2.scanner.MainActivity"
+47-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:31:13-41
+48            android:exported="true"
+48-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:32:13-36
+49            android:screenOrientation="portrait" >
+49-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:33:13-49
+50            <intent-filter>
+50-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:34:13-37:29
+51                <action android:name="android.intent.action.MAIN" />
+51-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:35:17-69
+51-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:35:25-66
+52
+53                <category android:name="android.intent.category.LAUNCHER" />
+53-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:36:17-77
+53-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:36:27-74
+54            </intent-filter>
+55        </activity>
+56        <activity
+56-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:40:9-44:52
+57            android:name="com.o2.scanner.ScanResultActivity"
+57-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:41:13-47
+58            android:exported="false"
+58-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:42:13-37
+59            android:parentActivityName="com.o2.scanner.MainActivity"
+59-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:43:13-55
+60            android:screenOrientation="portrait" />
+60-->/Users/mdmosaraf/Documents/work/monitroing/o2Scanner/app/src/main/AndroidManifest.xml:44:13-49
+61
+62        <service
+62-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:24:9-33:19
+63            android:name="androidx.camera.core.impl.MetadataHolderService"
+63-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:25:13-75
+64            android:enabled="false"
+64-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:26:13-36
+65            android:exported="false" >
+65-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:27:13-37
+66            <meta-data
+66-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:30:13-32:89
+67                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
+67-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:31:17-103
+68                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
+68-->[androidx.camera:camera-camera2:1.3.1] /Users/mdmosaraf/.gradle/caches/transforms-3/0e37e08efdc270925b5c40ce7fbb7f9c/transformed/camera-camera2-1.3.1/AndroidManifest.xml:32:17-86
+69        </service>
+70
+71        <provider
+71-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:24:9-32:20
+72            android:name="androidx.startup.InitializationProvider"
+72-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:25:13-67
+73            android:authorities="com.o2.scanner.androidx-startup"
+73-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:26:13-68
+74            android:exported="false" >
+74-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:27:13-37
+75            <meta-data
+75-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:29:13-31:52
+76                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+76-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:30:17-75
+77                android:value="androidx.startup" />
+77-->[androidx.emoji2:emoji2:1.2.0] /Users/mdmosaraf/.gradle/caches/transforms-3/6f6fec51fc0bf858d6900b90dd62d6da/transformed/emoji2-1.2.0/AndroidManifest.xml:31:17-49
+78            <meta-data
+78-->[androidx.lifecycle:lifecycle-process:2.9.4] /Users/mdmosaraf/.gradle/caches/transforms-3/fc359d3d5a3cc401592c4e300ec1593e/transformed/lifecycle-process-2.9.4/AndroidManifest.xml:29:13-31:52
+79                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+79-->[androidx.lifecycle:lifecycle-process:2.9.4] /Users/mdmosaraf/.gradle/caches/transforms-3/fc359d3d5a3cc401592c4e300ec1593e/transformed/lifecycle-process-2.9.4/AndroidManifest.xml:30:17-78
+80                android:value="androidx.startup" />
+80-->[androidx.lifecycle:lifecycle-process:2.9.4] /Users/mdmosaraf/.gradle/caches/transforms-3/fc359d3d5a3cc401592c4e300ec1593e/transformed/lifecycle-process-2.9.4/AndroidManifest.xml:31:17-49
+81            <meta-data
+81-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
+82                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+82-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
+83                android:value="androidx.startup" />
+83-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
+84            <meta-data
+84-->[com.squareup.okhttp3:okhttp-android:5.3.2] /Users/mdmosaraf/.gradle/caches/transforms-3/10c8954683bcdd1f02232cc631e91b17/transformed/okhttp-release/AndroidManifest.xml:16:13-18:52
+85                android:name="okhttp3.internal.platform.PlatformInitializer"
+85-->[com.squareup.okhttp3:okhttp-android:5.3.2] /Users/mdmosaraf/.gradle/caches/transforms-3/10c8954683bcdd1f02232cc631e91b17/transformed/okhttp-release/AndroidManifest.xml:17:17-77
+86                android:value="androidx.startup" />
+86-->[com.squareup.okhttp3:okhttp-android:5.3.2] /Users/mdmosaraf/.gradle/caches/transforms-3/10c8954683bcdd1f02232cc631e91b17/transformed/okhttp-release/AndroidManifest.xml:18:17-49
+87        </provider>
+88
+89        <service
+89-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:9:9-15:19
+90            android:name="com.google.mlkit.common.internal.MlKitComponentDiscoveryService"
+90-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:10:13-91
+91            android:directBootAware="true"
+91-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:17:13-43
+92            android:exported="false" >
+92-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:11:13-37
+93            <meta-data
+93-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:12:13-14:85
+94                android:name="com.google.firebase.components:com.google.mlkit.vision.barcode.internal.BarcodeRegistrar"
+94-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:13:17-120
+95                android:value="com.google.firebase.components.ComponentRegistrar" />
+95-->[com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/0c0d436d0227e2c95b7e843a2058fd8a/transformed/play-services-mlkit-barcode-scanning-18.3.0/AndroidManifest.xml:14:17-82
+96            <meta-data
+96-->[com.google.mlkit:vision-common:17.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/1ce9d18d672efd13a3164d8f8f1843eb/transformed/vision-common-17.3.0/AndroidManifest.xml:12:13-14:85
+97                android:name="com.google.firebase.components:com.google.mlkit.vision.common.internal.VisionCommonRegistrar"
+97-->[com.google.mlkit:vision-common:17.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/1ce9d18d672efd13a3164d8f8f1843eb/transformed/vision-common-17.3.0/AndroidManifest.xml:13:17-124
+98                android:value="com.google.firebase.components.ComponentRegistrar" />
+98-->[com.google.mlkit:vision-common:17.3.0] /Users/mdmosaraf/.gradle/caches/transforms-3/1ce9d18d672efd13a3164d8f8f1843eb/transformed/vision-common-17.3.0/AndroidManifest.xml:14:17-82
+99            <meta-data
+99-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:20:13-22:85
+100                android:name="com.google.firebase.components:com.google.mlkit.common.internal.CommonComponentRegistrar"
+100-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:21:17-120
+101                android:value="com.google.firebase.components.ComponentRegistrar" />
+101-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:22:17-82
+102        </service>
+103
+104        <provider
+104-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:9:9-13:38
+105            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+105-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:10:13-78
+106            android:authorities="com.o2.scanner.mlkitinitprovider"
+106-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:11:13-69
+107            android:exported="false"
+107-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:12:13-37
+108            android:initOrder="99" />
+108-->[com.google.mlkit:common:18.9.0] /Users/mdmosaraf/.gradle/caches/transforms-3/fd9d555fa43216779cbd948de1537098/transformed/common-18.9.0/AndroidManifest.xml:13:13-35
+109
+110        <activity
+110-->[com.google.android.gms:play-services-base:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/a07423590cddbae4afa1a8ffe54409e1/transformed/play-services-base-18.1.0/AndroidManifest.xml:20:9-22:45
+111            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+111-->[com.google.android.gms:play-services-base:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/a07423590cddbae4afa1a8ffe54409e1/transformed/play-services-base-18.1.0/AndroidManifest.xml:20:19-85
+112            android:exported="false"
+112-->[com.google.android.gms:play-services-base:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/a07423590cddbae4afa1a8ffe54409e1/transformed/play-services-base-18.1.0/AndroidManifest.xml:22:19-43
+113            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+113-->[com.google.android.gms:play-services-base:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/a07423590cddbae4afa1a8ffe54409e1/transformed/play-services-base-18.1.0/AndroidManifest.xml:21:19-78
+114
+115        <meta-data
+115-->[com.google.android.gms:play-services-basement:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d83dac885cb6847a1d0c23c51a2a758d/transformed/play-services-basement-18.1.0/AndroidManifest.xml:21:9-23:69
+116            android:name="com.google.android.gms.version"
+116-->[com.google.android.gms:play-services-basement:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d83dac885cb6847a1d0c23c51a2a758d/transformed/play-services-basement-18.1.0/AndroidManifest.xml:22:13-58
+117            android:value="@integer/google_play_services_version" />
+117-->[com.google.android.gms:play-services-basement:18.1.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d83dac885cb6847a1d0c23c51a2a758d/transformed/play-services-basement-18.1.0/AndroidManifest.xml:23:13-66
+118
+119        <uses-library
+119-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:25:9-27:40
+120            android:name="androidx.window.extensions"
+120-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:26:13-54
+121            android:required="false" />
+121-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:27:13-37
+122        <uses-library
+122-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:28:9-30:40
+123            android:name="androidx.window.sidecar"
+123-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:29:13-51
+124            android:required="false" />
+124-->[androidx.window:window:1.0.0] /Users/mdmosaraf/.gradle/caches/transforms-3/f70026d7d26498e4069a90e8f33ac7ca/transformed/window-1.0.0/AndroidManifest.xml:30:13-37
+125
+126        <receiver
+126-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
+127            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+127-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
+128            android:directBootAware="false"
+128-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
+129            android:enabled="true"
+129-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
+130            android:exported="true"
+130-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
+131            android:permission="android.permission.DUMP" >
+131-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
+132            <intent-filter>
+132-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
+133                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+133-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
+133-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
+134            </intent-filter>
+135            <intent-filter>
+135-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
+136                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+136-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
+136-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
+137            </intent-filter>
+138            <intent-filter>
+138-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
+139                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+139-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
+139-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
+140            </intent-filter>
+141            <intent-filter>
+141-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
+142                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+142-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
+142-->[androidx.profileinstaller:profileinstaller:1.4.0] /Users/mdmosaraf/.gradle/caches/transforms-3/d5b75a8a31160f9352acec061c4c75c5/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
+143            </intent-filter>
+144        </receiver>
+145
+146        <service
+146-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:29:9-35:19
+147            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+147-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:30:13-103
+148            android:exported="false" >
+148-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:31:13-37
+149            <meta-data
+149-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:32:13-34:39
+150                android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
+150-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:33:17-94
+151                android:value="cct" />
+151-->[com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/mdmosaraf/.gradle/caches/transforms-3/2179d1c02cd45167072b55de627d46d7/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:34:17-36
+152        </service>
+153        <service
+153-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:26:9-30:19
+154            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+154-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:27:13-117
+155            android:exported="false"
+155-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:28:13-37
+156            android:permission="android.permission.BIND_JOB_SERVICE" >
+156-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:29:13-69
+157        </service>
+158
+159        <receiver
+159-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:32:9-34:40
+160            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+160-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:33:13-132
+161            android:exported="false" />
+161-->[com.google.android.datatransport:transport-runtime:2.2.6] /Users/mdmosaraf/.gradle/caches/transforms-3/9191281fe62af8f8723f673456fbf62a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:34:13-37
+162    </application>
+163
+164</manifest>

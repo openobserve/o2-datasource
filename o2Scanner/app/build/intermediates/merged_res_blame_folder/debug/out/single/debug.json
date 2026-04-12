@@ -1,0 +1,62 @@
+[
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_flash_off.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_flash_off.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_open_in_browser.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_open_in_browser.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_check_circle.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_check_circle.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_copy.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_copy.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_share.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_share.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/layout_activity_scan_result.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/layout/activity_scan_result.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_flash_on.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_flash_on.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_circle_button.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/circle_button.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_qr_code.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_qr_code.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/drawable_ic_history.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/drawable/ic_history.xml"
+    },
+    {
+        "merged": "com.o2.scanner.app-merged_res-54:/layout_activity_main.xml.flat",
+        "source": "com.o2.scanner.app-main-56:/layout/activity_main.xml"
+    }
+]
