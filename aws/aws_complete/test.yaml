@@ -1,0 +1,51 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample CloudFormation template for ops0 stack
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+Resources:
+  SampleBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-sample-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-sample-bucket'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+Outputs:
+  BucketName:
+    Description: Name of the sample S3 bucket
+    Value: !Ref SampleBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+  BucketArn:
+    Description: ARN of the sample S3 bucket
+    Value: !GetAtt SampleBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketArn'
