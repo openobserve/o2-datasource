@@ -86,8 +86,8 @@
     "functionAppName": "[concat(parameters('namePrefix'), '-func-', variables('uniqueSuffix'))]",
     "functionName": "ActivityLogForwarder",
 
-    "storageConnectionString": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2022-09-01').keys[0].value)]",
-    "eventHubListenConnectionString": "[listKeys(resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName')), '2022-10-01-preview').primaryConnectionString]"
+    "storageResourceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+    "eventHubAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName'))]"
   },
 
   "resources": [
@@ -203,11 +203,11 @@
           "appSettings": [
             {
               "name": "AzureWebJobsStorage",
-              "value": "[variables('storageConnectionString')]"
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageResourceId'), '2022-09-01').keys[0].value)]"
             },
             {
               "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-              "value": "[variables('storageConnectionString')]"
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageResourceId'), '2022-09-01').keys[0].value)]"
             },
             {
               "name": "WEBSITE_CONTENTSHARE",
@@ -235,7 +235,7 @@
             },
             {
               "name": "EventHubConnection",
-              "value": "[variables('eventHubListenConnectionString')]"
+              "value": "[listKeys(variables('eventHubAuthRuleId'), '2022-10-01-preview').primaryConnectionString]"
             },
             {
               "name": "EVENT_HUB_NAME",
