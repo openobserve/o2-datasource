@@ -4,9 +4,10 @@ import os
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
+import azure.functions as func
 
 
-def main(events) -> None:
+def main(events: list[func.EventHubEvent]) -> None:
     endpoint = os.environ.get('OPENOBSERVE_ENDPOINT', '')
     access_key = os.environ.get('OPENOBSERVE_ACCESS_KEY', '')
     stream_name = os.environ.get('STREAM_NAME', 'azure-activity-logs')
@@ -20,12 +21,7 @@ def main(events) -> None:
 
     for event in event_list:
         try:
-            if isinstance(event, (bytes, bytearray)):
-                body = event.decode('utf-8')
-            elif isinstance(event, str):
-                body = event
-            else:
-                body = str(event)
+            body = event.get_body().decode('utf-8')
 
             data = json.loads(body)
 
