@@ -97,6 +97,23 @@ collect_config() {
     STREAM_NAME="${input_stream:-azure-activity-logs}"
 
     echo ""
+    # Function App Plan SKU
+    print_info "Select Function App hosting plan:"
+    echo "  1) Y1  — Consumption / serverless (requires Dynamic VM quota in your subscription)"
+    echo "  2) B1  — Basic (always-on, ~\$13/mo, no extra quota needed)"
+    echo "  3) B2  — Basic larger"
+    echo "  4) S1  — Standard (auto-scale capable)"
+    read -p "  Option [1]: " plan_opt
+    case "${plan_opt:-1}" in
+        1) FUNCTION_PLAN_SKU="Y1" ;;
+        2) FUNCTION_PLAN_SKU="B1" ;;
+        3) FUNCTION_PLAN_SKU="B2" ;;
+        4) FUNCTION_PLAN_SKU="S1" ;;
+        *) print_error "Invalid option."; exit 1 ;;
+    esac
+    print_info "Function plan SKU: $FUNCTION_PLAN_SKU"
+
+    echo ""
     # Diagnostic Settings
     print_info "Select which Activity Log categories to stream (space-separated)."
     print_info "Categories: Administrative Security ServiceHealth Alert Recommendation Policy Autoscale ResourceHealth"
@@ -145,6 +162,7 @@ deploy_arm_template() {
             streamName="$STREAM_NAME" \
             location="$LOCATION" \
             namePrefix="$NAME_PREFIX" \
+            functionPlanSku="$FUNCTION_PLAN_SKU" \
         --output table
 
     print_success "ARM template deployed."
@@ -259,6 +277,7 @@ main() {
     echo "  Name Prefix:       $NAME_PREFIX"
     echo "  OpenObserve URL:   $OO_ENDPOINT"
     echo "  OpenObserve User:  $OO_USER"
+    echo "  Function Plan SKU: $FUNCTION_PLAN_SKU"
     echo "  Stream Name:       $STREAM_NAME"
     echo "  Log Categories:    ${LOG_CATEGORIES[*]}"
     echo "══════════════════════════════════════════════"

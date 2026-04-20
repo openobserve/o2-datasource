@@ -43,6 +43,14 @@
         "description": "Short prefix used to name all resources (max 14 chars, lowercase letters and hyphens)"
       }
     },
+    "functionPlanSku": {
+      "type": "string",
+      "defaultValue": "Y1",
+      "allowedValues": [ "Y1", "B1", "B2", "B3", "S1", "S2", "S3" ],
+      "metadata": {
+        "description": "App Service Plan SKU for the Function App. Y1 = Consumption (serverless, requires Dynamic VM quota). B1/B2/B3 = Basic, S1/S2/S3 = Standard (always-on, no extra quota needed)."
+      }
+    },
     "eventHubSku": {
       "type": "string",
       "defaultValue": "Standard",
@@ -86,6 +94,7 @@
     "functionAppName": "[concat(parameters('namePrefix'), '-func-', variables('uniqueSuffix'))]",
     "functionName": "ActivityLogForwarder",
 
+    "functionPlanTier": "[if(equals(parameters('functionPlanSku'), 'Y1'), 'Dynamic', if(or(equals(parameters('functionPlanSku'), 'B1'), equals(parameters('functionPlanSku'), 'B2'), equals(parameters('functionPlanSku'), 'B3')), 'Basic', 'Standard'))]",
     "storageResourceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
     "eventHubAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName'))]"
   },
@@ -167,14 +176,14 @@
     },
 
     {
-      "comments": "App Service Plan — Consumption (Y1 / serverless) on Linux",
+      "comments": "App Service Plan — SKU selectable: Y1/Consumption (requires Dynamic VM quota) or B1-S3 (always-on, no extra quota)",
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2022-03-01",
       "name": "[variables('appServicePlanName')]",
       "location": "[parameters('location')]",
       "sku": {
-        "name": "Y1",
-        "tier": "Dynamic"
+        "name": "[parameters('functionPlanSku')]",
+        "tier": "[variables('functionPlanTier')]"
       },
       "kind": "functionapp,linux",
       "properties": {
