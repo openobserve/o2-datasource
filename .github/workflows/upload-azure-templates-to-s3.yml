@@ -7,6 +7,7 @@ on:
     paths:
       - 'azure/**/*.json'
       - 'azure/**/*.bicep'
+      - 'azure/**/function/**'
   workflow_dispatch:
     inputs:
       s3_bucket:
@@ -42,21 +43,38 @@ jobs:
         run: |
           echo "Uploading ARM templates from azure/ to s3://${S3_BUCKET}/${S3_PATH}"
 
-          # Check for duplicate filenames across subdirectories
-          DUPLICATES=$(find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) -exec basename {} \; | sort | uniq -d)
+          # Check for duplicate filenames across subdirectories (excluding function/ dirs)
+          DUPLICATES=$(find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) ! -path "*/function/*" -exec basename {} \; | sort | uniq -d)
           if [ -n "$DUPLICATES" ]; then
             echo "Error: Duplicate filenames found:"
             echo "$DUPLICATES"
             exit 1
           fi
 
-          # Upload all JSON/Bicep files to the S3 path (flattened, no folders)
-          find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) -exec aws s3 cp {} s3://${S3_BUCKET}/${S3_PATH} \;
+          # Upload all JSON/Bicep template files (flattened, excluding function source dirs)
+          find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) ! -path "*/function/*" -exec aws s3 cp {} s3://${S3_BUCKET}/${S3_PATH} \;
+
+      - name: Zip and upload function packages to S3
+        run: |
+          echo "Building and uploading function zip packages..."
+
+          # Find every function/ directory and zip + upload each one
+          find azure/ -type d -name "function" | while read -r func_dir; do
+            # Derive zip name from the service folder (e.g. azure_activity_logs -> activity-logs-function.zip)
+            service_dir=$(basename "$(dirname "$func_dir")")
+            zip_name="${service_dir}-function.zip"
+
+            echo "  Zipping $func_dir -> ${zip_name}"
+            (cd "$func_dir" && zip -r "/tmp/${zip_name}" . -x "*.DS_Store") > /dev/null
+
+            echo "  Uploading ${zip_name} to s3://${S3_BUCKET}/${S3_PATH}${zip_name}"
+            aws s3 cp "/tmp/${zip_name}" "s3://${S3_BUCKET}/${S3_PATH}${zip_name}"
+          done
 
       - name: Verify upload
         run: |
           echo "Listing uploaded files in S3:"
-          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep)$' || echo "No files found"
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep|zip)$' || echo "No files found"
 
       - name: Upload summary
         run: |
@@ -66,4 +84,4 @@ jobs:
           echo "**Region:** ${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Uploaded Files:" >> $GITHUB_STEP_SUMMARY
-          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep)$' | awk '{print "- " $4}' >> $GITHUB_STEP_SUMMARY || echo "- No files found" >> $GITHUB_STEP_SUMMARY
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep|zip)$' | awk '{print "- " $4}' >> $GITHUB_STEP_SUMMARY || echo "- No files found" >> $GITHUB_STEP_SUMMARY

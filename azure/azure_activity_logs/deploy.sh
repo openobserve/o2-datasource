@@ -188,6 +188,164 @@ deploy_arm_template() {
 }
 
 # ============================================================
+# Deploy function code via zip deploy
+# ============================================================
+deploy_function_code() {
+    print_header "Deploying Function Code"
+
+    TMP_DIR=$(mktemp -d)
+    FUNC_DIR="$TMP_DIR/ActivityLogForwarder"
+    mkdir -p "$FUNC_DIR"
+
+    # Write function.json (binding config)
+    cat > "$FUNC_DIR/function.json" <<'EOF'
+{
+  "scriptFile": "__init__.py",
+  "bindings": [
+    {
+      "type": "eventHubTrigger",
+      "name": "events",
+      "direction": "in",
+      "eventHubName": "%EVENT_HUB_NAME%",
+      "connection": "EventHubConnection",
+      "cardinality": "many",
+      "consumerGroup": "$Default"
+    }
+  ]
+}
+EOF
+
+    # Write __init__.py (forwarding logic)
+    cat > "$FUNC_DIR/__init__.py" <<'EOF'
+import logging
+import json
+import os
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+
+
+def main(events) -> None:
+    endpoint = os.environ.get('OPENOBSERVE_ENDPOINT', '')
+    access_key = os.environ.get('OPENOBSERVE_ACCESS_KEY', '')
+    stream_name = os.environ.get('STREAM_NAME', 'azure-activity-logs')
+
+    if not endpoint or not access_key:
+        logging.error('Missing OPENOBSERVE_ENDPOINT or OPENOBSERVE_ACCESS_KEY env vars')
+        return
+
+    all_records = []
+    event_list = events if isinstance(events, list) else [events]
+
+    for event in event_list:
+        try:
+            if isinstance(event, (bytes, bytearray)):
+                body = event.decode('utf-8')
+            elif isinstance(event, str):
+                body = event
+            else:
+                body = str(event)
+
+            data = json.loads(body)
+
+            if isinstance(data, dict) and 'records' in data:
+                for record in data['records']:
+                    record['_timestamp'] = (
+                        record.get('time') or
+                        record.get('eventTimestamp') or
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                    record['_source'] = 'azure-activity-log'
+                    record['_stream'] = stream_name
+                    all_records.append(record)
+            elif isinstance(data, list):
+                for item in data:
+                    item['_timestamp'] = (
+                        item.get('time') or
+                        item.get('eventTimestamp') or
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                    item['_source'] = 'azure-activity-log'
+                    item['_stream'] = stream_name
+                    all_records.append(item)
+            else:
+                data['_timestamp'] = (
+                    data.get('time') or
+                    data.get('eventTimestamp') or
+                    datetime.now(timezone.utc).isoformat()
+                )
+                data['_source'] = 'azure-activity-log'
+                data['_stream'] = stream_name
+                all_records.append(data)
+
+        except Exception as exc:
+            logging.error('Error parsing Event Hub message: %s', exc)
+
+    if not all_records:
+        logging.info('No records to forward')
+        return
+
+    payload = json.dumps(all_records).encode('utf-8')
+    logging.info('Forwarding %d Activity Log records to OpenObserve', len(all_records))
+
+    req = urllib.request.Request(
+        endpoint,
+        data=payload,
+        method='POST',
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + access_key,
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            logging.info('Successfully sent %d records to OpenObserve. HTTP %s',
+                         len(all_records), resp.status)
+    except urllib.error.HTTPError as exc:
+        logging.error('OpenObserve HTTP error %s: %s', exc.code, exc.reason)
+        raise
+    except Exception as exc:
+        logging.error('Failed to send to OpenObserve: %s', exc)
+        raise
+EOF
+
+    # Write host.json at root
+    cat > "$TMP_DIR/host.json" <<'EOF'
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true
+      }
+    }
+  }
+}
+EOF
+
+    # Write requirements.txt at root
+    echo "# stdlib only — no extra packages needed" > "$TMP_DIR/requirements.txt"
+
+    # Zip everything
+    ZIP_FILE=$(mktemp /tmp/function-XXXXXX.zip)
+    (cd "$TMP_DIR" && zip -r "$ZIP_FILE" . -x "*.DS_Store") > /dev/null
+
+    print_info "Waiting for Function App runtime to be ready..."
+    sleep 20
+
+    print_info "Deploying function code to $FUNCTION_APP_NAME..."
+    az functionapp deployment source config-zip \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$FUNCTION_APP_NAME" \
+        --src "$ZIP_FILE" \
+        --output none
+
+    rm -rf "$TMP_DIR" "$ZIP_FILE"
+    print_success "Function code deployed."
+}
+
+# ============================================================
 # Configure Subscription Diagnostic Settings
 # ============================================================
 configure_diagnostic_settings() {
@@ -290,6 +448,7 @@ main() {
 
     create_resource_group
     deploy_arm_template
+    deploy_function_code
     configure_diagnostic_settings
     show_summary
 }

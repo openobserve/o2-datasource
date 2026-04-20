@@ -3,6 +3,13 @@
   "contentVersion": "1.0.0.0",
 
   "parameters": {
+    "functionPackageUrl": {
+      "type": "string",
+      "defaultValue": "https://openobserve-datasources-bucket.s3.amazonaws.com/datasource/cloud/azure/azure_activity_logs-function.zip",
+      "metadata": {
+        "description": "URL of the Function App zip package in S3. Leave as default unless you are hosting templates in a custom bucket."
+      }
+    },
     "openObserveEndpoint": {
       "type": "string",
       "metadata": {
@@ -218,6 +225,10 @@
               "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageResourceId'), '2022-09-01').keys[0].value)]"
             },
             {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "[parameters('functionPackageUrl')]"
+            },
+            {
               "name": "FUNCTIONS_EXTENSION_VERSION",
               "value": "~4"
             },
@@ -250,36 +261,6 @@
           "minTlsVersion": "1.2"
         },
         "httpsOnly": true
-      }
-    },
-
-    {
-      "comments": "Azure Function — Event Hub trigger: parses Azure Activity Log records and POSTs to OpenObserve",
-      "type": "Microsoft.Web/sites/functions",
-      "apiVersion": "2022-03-01",
-      "name": "[concat(variables('functionAppName'), '/', variables('functionName'))]",
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
-      ],
-      "properties": {
-        "config": {
-          "disabled": false,
-          "bindings": [
-            {
-              "type": "eventHubTrigger",
-              "name": "events",
-              "direction": "in",
-              "eventHubName": "%EVENT_HUB_NAME%",
-              "connection": "EventHubConnection",
-              "cardinality": "many",
-              "consumerGroup": "$Default"
-            }
-          ]
-        },
-        "files": {
-          "__init__.py": "import logging\nimport json\nimport os\nimport urllib.request\nimport urllib.error\nfrom datetime import datetime, timezone\n\n\ndef main(events) -> None:\n    \"\"\"Process Azure Activity Log events from Event Hub and forward to OpenObserve.\"\"\"\n    endpoint = os.environ.get('OPENOBSERVE_ENDPOINT', '')\n    access_key = os.environ.get('OPENOBSERVE_ACCESS_KEY', '')\n    stream_name = os.environ.get('STREAM_NAME', 'azure-activity-logs')\n\n    if not endpoint or not access_key:\n        logging.error('Missing OPENOBSERVE_ENDPOINT or OPENOBSERVE_ACCESS_KEY env vars')\n        return\n\n    all_records = []\n    event_list = events if isinstance(events, list) else [events]\n\n    for event in event_list:\n        try:\n            # Decode raw bytes from Event Hub\n            if isinstance(event, (bytes, bytearray)):\n                body = event.decode('utf-8')\n            elif isinstance(event, str):\n                body = event\n            else:\n                body = str(event)\n\n            data = json.loads(body)\n\n            # Azure Activity Logs arrive wrapped as {\"records\": [...]}\n            if isinstance(data, dict) and 'records' in data:\n                for record in data['records']:\n                    # Normalize timestamp field\n                    record['_timestamp'] = (\n                        record.get('time') or\n                        record.get('eventTimestamp') or\n                        datetime.now(timezone.utc).isoformat()\n                    )\n                    record['_source'] = 'azure-activity-log'\n                    record['_stream'] = stream_name\n                    all_records.append(record)\n\n            elif isinstance(data, list):\n                for item in data:\n                    item['_timestamp'] = (\n                        item.get('time') or\n                        item.get('eventTimestamp') or\n                        datetime.now(timezone.utc).isoformat()\n                    )\n                    item['_source'] = 'azure-activity-log'\n                    item['_stream'] = stream_name\n                    all_records.append(item)\n\n            else:\n                data['_timestamp'] = (\n                    data.get('time') or\n                    data.get('eventTimestamp') or\n                    datetime.now(timezone.utc).isoformat()\n                )\n                data['_source'] = 'azure-activity-log'\n                data['_stream'] = stream_name\n                all_records.append(data)\n\n        except Exception as exc:\n            logging.error('Error parsing Event Hub message: %s', exc)\n\n    if not all_records:\n        logging.info('No records to forward')\n        return\n\n    payload = json.dumps(all_records).encode('utf-8')\n    logging.info('Forwarding %d Activity Log records to OpenObserve', len(all_records))\n\n    req = urllib.request.Request(\n        endpoint,\n        data=payload,\n        method='POST',\n        headers={\n            'Content-Type': 'application/json',\n            'Authorization': 'Basic ' + access_key,\n        }\n    )\n\n    try:\n        with urllib.request.urlopen(req, timeout=30) as resp:\n            logging.info(\n                'Successfully sent %d records to OpenObserve. HTTP %s',\n                len(all_records), resp.status\n            )\n    except urllib.error.HTTPError as exc:\n        logging.error('OpenObserve HTTP error %s: %s', exc.code, exc.reason)\n        raise\n    except Exception as exc:\n        logging.error('Failed to send to OpenObserve: %s', exc)\n        raise\n",
-          "requirements.txt": "# No additional packages required — only Python standard library is used\n"
-        }
       }
     }
 
