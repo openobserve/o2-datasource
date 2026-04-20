@@ -4,10 +4,9 @@ import os
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-import azure.functions as func
 
 
-def main(events: list[func.EventHubEvent]) -> None:
+def main(events) -> None:
     endpoint = os.environ.get('OPENOBSERVE_ENDPOINT', '')
     access_key = os.environ.get('OPENOBSERVE_ACCESS_KEY', '')
     stream_name = os.environ.get('STREAM_NAME', 'azure-activity-logs')

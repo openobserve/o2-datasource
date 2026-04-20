@@ -1,1 +1,1 @@
-azure-functions
+# stdlib only — no extra packages needed
