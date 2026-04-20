@@ -9,10 +9,16 @@
         "description": "OpenObserve HTTP endpoint URL (e.g. https://api.openobserve.ai/api/your-org/azure-activity-logs/_json)"
       }
     },
-    "openObserveAccessKey": {
+    "openObserveUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "OpenObserve username (email address used to log in)"
+      }
+    },
+    "openObservePassword": {
       "type": "securestring",
       "metadata": {
-        "description": "OpenObserve access key- base64 encoded user:password (echo -n 'user@example.com:password' | base64)"
+        "description": "OpenObserve password"
       }
     },
     "streamName": {
@@ -67,6 +73,7 @@
 
   "variables": {
     "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
+    "openObserveAccessKey": "[base64(concat(parameters('openObserveUsername'), ':', parameters('openObservePassword')))]",
 
     "storageAccountName": "[take(concat(replace(toLower(parameters('namePrefix')), '-', ''), variables('uniqueSuffix')), 24)]",
     "eventHubNamespaceName": "[concat(parameters('namePrefix'), '-evhns-', variables('uniqueSuffix'))]",
@@ -220,7 +227,7 @@
             },
             {
               "name": "OPENOBSERVE_ACCESS_KEY",
-              "value": "[parameters('openObserveAccessKey')]"
+              "value": "[variables('openObserveAccessKey')]"
             },
             {
               "name": "STREAM_NAME",

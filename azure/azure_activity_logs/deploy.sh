@@ -79,21 +79,18 @@ collect_config() {
         exit 1
     fi
 
-    # Build access key from credentials or accept pre-encoded
+    # OpenObserve credentials
     echo ""
-    echo "  How do you want to provide OpenObserve credentials?"
-    echo "  1) Enter username + password (will be base64-encoded)"
-    echo "  2) Enter a pre-encoded access key (base64 of user:password)"
-    read -p "  Option [1]: " cred_opt
-    cred_opt="${cred_opt:-1}"
-
-    if [ "$cred_opt" = "1" ]; then
-        read -p "  OpenObserve username (email): " OO_USER
-        read -sp "  OpenObserve password: " OO_PASS
-        echo ""
-        OO_ACCESS_KEY=$(echo -n "${OO_USER}:${OO_PASS}" | base64)
-    else
-        read -p "  Pre-encoded access key: " OO_ACCESS_KEY
+    read -p "  OpenObserve username (email): " OO_USER
+    if [ -z "$OO_USER" ]; then
+        print_error "OpenObserve username is required."
+        exit 1
+    fi
+    read -sp "  OpenObserve password: " OO_PASS
+    echo ""
+    if [ -z "$OO_PASS" ]; then
+        print_error "OpenObserve password is required."
+        exit 1
     fi
 
     read -p "  OpenObserve stream name [azure-activity-logs]: " input_stream
@@ -143,7 +140,8 @@ deploy_arm_template() {
         --template-file "$TEMPLATE_FILE" \
         --parameters \
             openObserveEndpoint="$OO_ENDPOINT" \
-            openObserveAccessKey="$OO_ACCESS_KEY" \
+            openObserveUsername="$OO_USER" \
+            openObservePassword="$OO_PASS" \
             streamName="$STREAM_NAME" \
             location="$LOCATION" \
             namePrefix="$NAME_PREFIX" \
@@ -260,6 +258,7 @@ main() {
     echo "  Resource Group:    $RESOURCE_GROUP"
     echo "  Name Prefix:       $NAME_PREFIX"
     echo "  OpenObserve URL:   $OO_ENDPOINT"
+    echo "  OpenObserve User:  $OO_USER"
     echo "  Stream Name:       $STREAM_NAME"
     echo "  Log Categories:    ${LOG_CATEGORIES[*]}"
     echo "══════════════════════════════════════════════"
