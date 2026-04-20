@@ -1,0 +1,69 @@
+name: Upload Azure Templates to S3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'azure/**/*.json'
+      - 'azure/**/*.bicep'
+  workflow_dispatch:
+    inputs:
+      s3_bucket:
+        description: 'S3 bucket name (optional, overrides default)'
+        required: false
+        type: string
+
+env:
+  S3_BUCKET: ${{ inputs.s3_bucket || secrets.AWS_S3_BUCKET || 'openobserve-datasources-bucket' }}
+  S3_PATH: 'datasource/cloud/azure/'
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  upload-to-s3:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC authentication
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::325553860333:role/github-actions-s3-uploader"
+          role-session-name: GitHubActions-S3Upload
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload ARM template files to S3
+        run: |
+          echo "Uploading ARM templates from azure/ to s3://${S3_BUCKET}/${S3_PATH}"
+
+          # Check for duplicate filenames across subdirectories
+          DUPLICATES=$(find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) -exec basename {} \; | sort | uniq -d)
+          if [ -n "$DUPLICATES" ]; then
+            echo "Error: Duplicate filenames found:"
+            echo "$DUPLICATES"
+            exit 1
+          fi
+
+          # Upload all JSON/Bicep files to the S3 path (flattened, no folders)
+          find azure/ -type f \( -name "*.json" -o -name "*.bicep" \) -exec aws s3 cp {} s3://${S3_BUCKET}/${S3_PATH} \;
+
+      - name: Verify upload
+        run: |
+          echo "Listing uploaded files in S3:"
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep)$' || echo "No files found"
+
+      - name: Upload summary
+        run: |
+          echo "### S3 Upload Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket:** s3://${S3_BUCKET}/${S3_PATH}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Uploaded Files:" >> $GITHUB_STEP_SUMMARY
+          aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(json|bicep)$' | awk '{print "- " $4}' >> $GITHUB_STEP_SUMMARY || echo "- No files found" >> $GITHUB_STEP_SUMMARY
