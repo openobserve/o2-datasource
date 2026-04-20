@@ -12,7 +12,7 @@
     "openObserveAccessKey": {
       "type": "securestring",
       "metadata": {
-        "description": "OpenObserve access key — base64 encoded user:password (echo -n 'user@example.com:password' | base64)"
+        "description": "OpenObserve access key- base64 encoded user:password (echo -n 'user@example.com:password' | base64)"
       }
     },
     "streamName": {
