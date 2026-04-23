@@ -19,7 +19,11 @@ Metadata:
           - OpenObserveEndpoint
           - OpenObserveAccessKey
       - Label:
-          default: '3. Enable / Disable Services'
+          default: '3. Environment Configuration'
+        Parameters:
+          - Environment
+      - Label:
+          default: '4. Enable / Disable Services'
         Parameters:
           - EnableApiGateway
           - EnableCloudFront
@@ -153,6 +157,8 @@ Metadata:
         default: 'OpenObserve Endpoint URL'
       OpenObserveAccessKey:
         default: 'OpenObserve Access Key (base64)'
+      Environment:
+        default: 'Deployment Environment'
 
 Parameters:
 
@@ -179,6 +185,15 @@ Parameters:
     Type: String
     NoEcho: true
     Description: 'OpenObserve access key for authentication (base64 encoded user:password)'
+
+  # ============================================================
+  # Environment Configuration
+  # ============================================================
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Deployment environment (dev/staging/prod)'
 
   # ============================================================
   # Enable / Disable Services
@@ -676,10 +691,16 @@ Resources:
         EnableAccessLogging: 'false'
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-api-gateway'
         - Key: Service
           Value: api-gateway
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # CloudFront Real-time Logs
@@ -698,10 +719,16 @@ Resources:
         ShardCount: !Ref CloudFrontShardCount
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudfront'
         - Key: Service
           Value: cloudfront
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # CloudWatch Logs
@@ -721,10 +748,16 @@ Resources:
         FilterPattern: !Ref CloudWatchFilterPattern
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudwatch-logs'
         - Key: Service
           Value: cloudwatch-logs
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # Cognito Events
@@ -742,10 +775,16 @@ Resources:
         BackupS3Prefix: 'cognito-events-backup/'
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cognito'
         - Key: Service
           Value: cognito
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # DynamoDB Streams
@@ -764,10 +803,16 @@ Resources:
         ShardCount: !Ref DynamoDBShardCount
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-dynamodb'
         - Key: Service
           Value: dynamodb
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # EC2 — CloudWatch Agent via SSM
@@ -783,10 +828,16 @@ Resources:
         LogGroupPrefix: !Ref EC2LogGroupPrefix
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ec2'
         - Key: Service
           Value: ec2
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # EventBridge Events
@@ -805,10 +856,16 @@ Resources:
         StreamName: !Ref EventBridgeStreamName
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-eventbridge'
         - Key: Service
           Value: eventbridge
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # Kinesis Data Stream → OpenObserve
@@ -828,10 +885,16 @@ Resources:
         BufferSizeMB: 5
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-kinesis-stream'
         - Key: Service
           Value: kinesis-stream
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # RDS Logs
@@ -852,10 +915,16 @@ Resources:
         RDSInstanceIdentifier: !Ref RDSInstanceIdentifier
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-rds'
         - Key: Service
           Value: rds
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # Route53 Query Logs
@@ -874,10 +943,16 @@ Resources:
         ShardCount: !Ref Route53ShardCount
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-route53'
         - Key: Service
           Value: route53
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # S3 Access Logs
@@ -897,10 +972,16 @@ Resources:
         LogPrefix: !Ref S3LogPrefix
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-s3-access-logs'
         - Key: Service
           Value: s3-access-logs
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # VPC Flow Logs (Direct Firehose — Recommended)
@@ -919,10 +1000,16 @@ Resources:
         TrafficType: !Ref VPCTrafficType
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc-flow-logs'
         - Key: Service
           Value: vpc-flow-logs
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # ALB Logs
@@ -943,10 +1030,16 @@ Resources:
         BasicAuthPassword: !Ref ALBBasicAuthPassword
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-alb'
         - Key: Service
           Value: alb
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # CloudTrail Logs
@@ -964,10 +1057,16 @@ Resources:
         S3BackupBucket: !Ref CloudTrailS3BackupBucket
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudtrail'
         - Key: Service
           Value: cloudtrail
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # CloudWatch All Metrics Stream
@@ -984,10 +1083,16 @@ Resources:
         S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudwatch-metrics'
         - Key: Service
           Value: cloudwatch-metrics
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
   # ============================================================
   # WAF Logs
@@ -1005,10 +1110,16 @@ Resources:
         S3BackupBucket: !Ref WAFS3BackupBucket
       TimeoutInMinutes: 30
       Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-waf'
         - Key: Service
           Value: waf
+        - Key: Environment
+          Value: !Ref Environment
         - Key: ManagedBy
-          Value: deploy-all
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
 
 
 Outputs:
