@@ -3,19 +3,23 @@
 # OpenObserve Kubernetes Collector Quick Installer
 # Usage: curl -sSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/k8s/install.sh | bash -s -- --cluster-name=mycluster --o2-url=https://myinstance.openobserve.ai --org-id=myorg --access-key=base64key
 
+# Exit immediately if any command fails
 set -e
 
-# Version pinning for reproducibility (Issue 9 - Fixed)
+# ─── Component Versions ───────────────────────────────────────────────────────
+# Pin versions for reproducibility; allow overrides via environment variables
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.20.0}"
 PROMETHEUS_OPERATOR_VERSION="${PROMETHEUS_OPERATOR_VERSION:-v0.77.1}"
 OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.138.0}"
 
-# Network operation settings (Issue 10, 12 - Fixed)
+# ─── Network / Retry Settings ─────────────────────────────────────────────────
+# Controls how many times failed network calls are retried and how long to wait
 RETRY_COUNT="${RETRY_COUNT:-3}"
 RETRY_DELAY="${RETRY_DELAY:-5}"
 OPERATION_TIMEOUT="${OPERATION_TIMEOUT:-300}"
 
-# Default values
+# ─── Installation Defaults ────────────────────────────────────────────────────
+# These are overridden by command-line flags parsed below
 CLUSTER_NAME=""
 O2_URL=""
 ORG_ID=""
@@ -26,18 +30,19 @@ SKIP_OTEL_OPERATOR=false
 INTERNAL_ENDPOINT=""
 DRY_RUN=false
 
-# Cleanup tracking (Issue 21 - Fixed)
+# ─── Cleanup State ────────────────────────────────────────────────────────────
+# Track what was created so we can report it if the install fails mid-way
 RESOURCES_CREATED=()
 TEMP_FILES=()
 
-# Colors for output
+# ─── Terminal Colors ──────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Print colored output
+# ─── Logging Helpers ──────────────────────────────────────────────────────────
 print_info() {
     echo -e "${BLUE}ℹ${NC} $1"
 }
@@ -54,7 +59,8 @@ print_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
-# Redact sensitive information (Issue 4 - Fixed)
+# ─── Secret Redaction ─────────────────────────────────────────────────────────
+# Masks credentials in log output, showing only first/last 4 characters
 redact_secret() {
     local secret="$1"
     if [ ${#secret} -le 8 ]; then
@@ -64,11 +70,12 @@ redact_secret() {
     fi
 }
 
-# Cleanup function (Issue 21 - Fixed)
+# ─── Error Cleanup Handler ────────────────────────────────────────────────────
+# Called automatically on ERR/INT/TERM; removes temp files and lists what was created
 cleanup_on_error() {
     print_error "Installation failed. Cleaning up..."
 
-    # Remove temporary files
+    # Remove temporary files created during the run
     for temp_file in "${TEMP_FILES[@]}"; do
         if [ -f "$temp_file" ]; then
             rm -f "$temp_file"
@@ -76,6 +83,7 @@ cleanup_on_error() {
         fi
     done
 
+    # List any Kubernetes resources that were already applied before the failure
     print_warning "Some resources may have been created. Review and clean up if needed:"
     for resource in "${RESOURCES_CREATED[@]}"; do
         print_info "  - $resource"
@@ -84,10 +92,11 @@ cleanup_on_error() {
     exit 1
 }
 
-# Set trap for cleanup (Issue 21 - Fixed)
+# Register the cleanup handler to run on script error or user interrupt
 trap cleanup_on_error ERR INT TERM
 
-# Retry function for network operations (Issue 10 - Fixed)
+# ─── Network Retry Wrapper ────────────────────────────────────────────────────
+# Retries a command up to RETRY_COUNT times with RETRY_DELAY seconds between attempts
 retry_command() {
     local max_attempts=$RETRY_COUNT
     local delay=$RETRY_DELAY
@@ -110,7 +119,7 @@ retry_command() {
     done
 }
 
-# Print usage
+# ─── Usage / Help Text ────────────────────────────────────────────────────────
 usage() {
     cat << EOF
 OpenObserve Kubernetes Collector Installer
@@ -133,9 +142,9 @@ Optional:
     --help                   Show this help message
 
 Environment Variables:
-    CERT_MANAGER_VERSION     cert-manager version (default: v1.19.0)
+    CERT_MANAGER_VERSION     cert-manager version (default: v1.20.0)
     PROMETHEUS_OPERATOR_VERSION  Prometheus operator version (default: v0.77.1)
-    OTEL_OPERATOR_VERSION    OpenTelemetry operator version (default: 0.115.0)
+    OTEL_OPERATOR_VERSION    OpenTelemetry operator version (default: 0.138.0)
     RETRY_COUNT             Number of retries for network operations (default: 3)
     RETRY_DELAY             Delay between retries in seconds (default: 5)
     OPERATION_TIMEOUT       Timeout for operations in seconds (default: 300)
@@ -172,7 +181,8 @@ Examples:
 EOF
 }
 
-# Validate base64 format (Issue 17 - Fixed)
+# ─── Input Validators ─────────────────────────────────────────────────────────
+# Checks that the access key is valid base64; prevents silent auth failures later
 validate_base64() {
     local input="$1"
     if ! echo "$input" | base64 -d &>/dev/null; then
@@ -181,7 +191,7 @@ validate_base64() {
     return 0
 }
 
-# Validate URL format (Issue 18 - Fixed)
+# Checks that a URL starts with http:// or https://
 validate_url() {
     local url="$1"
     if [[ ! "$url" =~ ^https?:// ]]; then
@@ -190,7 +200,8 @@ validate_url() {
     return 0
 }
 
-# Parse arguments
+# ─── Argument Parsing ─────────────────────────────────────────────────────────
+# Map each --flag=value argument to its corresponding variable
 for arg in "$@"; do
     case $arg in
         --cluster-name=*)
@@ -241,7 +252,9 @@ for arg in "$@"; do
     esac
 done
 
-# Validate required parameters
+# ─── Required Parameter Validation ───────────────────────────────────────────
+# Fail fast with a clear message if any required flag was not provided
+print_info "Validating parameters..."
 if [ -z "$CLUSTER_NAME" ]; then
     print_error "Missing required parameter: --cluster-name"
     usage
@@ -260,58 +273,63 @@ if [ -z "$ACCESS_KEY" ]; then
     exit 1
 fi
 
-# Validate endpoint
+# At least one endpoint (external URL or internal cluster URL) must be supplied
 if [ -z "$INTERNAL_ENDPOINT" ] && [ -z "$O2_URL" ]; then
     print_error "Either --o2-url or --internal-endpoint must be provided"
     usage
     exit 1
 fi
 
-# Validate ACCESS_KEY format (Issue 17 - Fixed)
+# Validate the access key is properly base64-encoded before attempting install
 if ! validate_base64 "$ACCESS_KEY"; then
     print_error "Invalid ACCESS_KEY format. Must be valid base64 encoded string."
     print_info "Generate with: echo -n 'email:passcode' | base64"
     exit 1
 fi
 
-# Use internal endpoint if provided, otherwise use external URL
+# ─── Endpoint Selection ───────────────────────────────────────────────────────
+# Prefer the internal cluster endpoint when provided (avoids external network hop)
 if [ -n "$INTERNAL_ENDPOINT" ]; then
     ENDPOINT="$INTERNAL_ENDPOINT"
     print_info "Using internal cluster endpoint: $ENDPOINT"
 else
     ENDPOINT="$O2_URL"
-    # Validate URL format (Issue 18 - Fixed)
+    # Reject malformed URLs early to avoid cryptic failures during data export
     if ! validate_url "$ENDPOINT"; then
         print_error "Invalid URL format for --o2-url. Must start with http:// or https://"
         exit 1
     fi
-    # Normalize URL - remove trailing slash
+    # Strip trailing slash so URL concatenation (e.g. /api/org) is consistent
     ENDPOINT="${ENDPOINT%/}"
     print_info "Using external endpoint: $ENDPOINT"
 fi
 
-# Check if kubectl is installed
+# ─── Prerequisites: CLI Tools ─────────────────────────────────────────────────
+# Both kubectl and helm must be installed and on PATH before proceeding
+print_info "Checking prerequisites (kubectl, helm, cluster access)..."
 if ! command -v kubectl &> /dev/null; then
     print_error "kubectl is not installed. Please install kubectl first."
     exit 1
 fi
 
-# Check if helm is installed
 if ! command -v helm &> /dev/null; then
     print_error "helm is not installed. Please install helm first."
     exit 1
 fi
 
-# Check kubectl access
+# ─── Prerequisites: Cluster Connectivity ─────────────────────────────────────
+# Verify the current kubeconfig context can reach the target cluster
 if ! kubectl cluster-info &> /dev/null; then
     print_error "Cannot connect to Kubernetes cluster. Please check your kubeconfig."
     exit 1
 fi
 
-# Note: Kubernetes version check removed - cert-manager and operators will validate compatibility
+# Kubernetes version check is intentionally skipped; cert-manager and operators
+# perform their own compatibility checks during installation
 print_info "Skipping Kubernetes version check (components will validate compatibility)"
 
-# RBAC permission verification (Issue 20 - Fixed)
+# ─── RBAC Permission Check ────────────────────────────────────────────────────
+# Ensure the current user can create the cluster-scoped resources this script needs
 print_info "Verifying RBAC permissions..."
 required_permissions=(
     "create:namespaces"
@@ -333,16 +351,15 @@ done
 
 print_success "RBAC permissions verified"
 
-# Endpoint reachability check (Issue 11 - Fixed)
+# ─── Endpoint Reachability Check ─────────────────────────────────────────────
+# Probe the OpenObserve endpoint before installing so data export issues surface early
 if [[ "$ENDPOINT" =~ ^https?:// ]]; then
     print_info "Checking endpoint reachability: $ENDPOINT"
     if command -v curl &> /dev/null; then
         endpoint_reachable=false
 
-        # Try multiple endpoints and check HTTP status codes
-        # 200-299: Success
-        # 401/403: Endpoint exists but requires auth (expected for API endpoints)
-        # 404/5xx: Endpoint doesn't exist or server error
+        # Try the base URL plus common health/API paths
+        # 2xx = success, 401/403 = endpoint exists but requires auth (expected), 404/5xx = bad endpoint
         for test_path in "" "/healthz" "/api/$ORG_ID"; do
             http_code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$ENDPOINT$test_path" 2>/dev/null || echo "000")
 
@@ -375,6 +392,8 @@ if [[ "$ENDPOINT" =~ ^https?:// ]]; then
     fi
 fi
 
+# ─── Installation Summary ─────────────────────────────────────────────────────
+# Print resolved configuration so the user can confirm before anything is installed
 print_success "Prerequisites check passed"
 echo ""
 print_info "Installation configuration:"
@@ -388,7 +407,8 @@ print_info "  Prometheus Operator Version: $PROMETHEUS_OPERATOR_VERSION"
 print_info "  OpenTelemetry Operator Version: $OTEL_OPERATOR_VERSION"
 echo ""
 
-# Dry run mode (Issue 29 - Fixed)
+# ─── Dry Run Mode ─────────────────────────────────────────────────────────────
+# When --dry-run is set, validate config and print what would be installed, then exit
 if [ "$DRY_RUN" = true ]; then
     print_success "Dry run mode: Configuration validated successfully"
     print_info "Would install the following components:"
@@ -403,7 +423,8 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
-# Check for existing installation (Issue 23 - Fixed)
+# ─── Existing Installation Detection ─────────────────────────────────────────
+# Detect an existing o2c Helm release and ask the user whether to upgrade it
 if helm list -n "$NAMESPACE" 2>/dev/null | grep -q "o2c"; then
     print_warning "Existing OpenObserve collector installation found in namespace $NAMESPACE"
     print_warning "This will upgrade the existing installation. Configuration may change."
@@ -416,19 +437,22 @@ if helm list -n "$NAMESPACE" 2>/dev/null | grep -q "o2c"; then
         print_info "Installation cancelled"
         exit 0
     fi
-    # Backup recommendation (Issue 30 - Fixed)
+    # Suggest a values backup so the user can roll back if the upgrade breaks something
     print_info "Consider backing up current values:"
     print_info "  helm get values o2c -n $NAMESPACE > o2c-backup-\$(date +%Y%m%d-%H%M%S).yaml"
 fi
 
-# Install cert-manager
+# ─── Step 1: Install cert-manager ─────────────────────────────────────────────
+# cert-manager is required by the OTel operator to issue TLS certificates for webhooks
+echo ""
+print_info "[Step 1/6] Installing cert-manager $CERT_MANAGER_VERSION..."
 if [ "$SKIP_CERT_MANAGER" = false ]; then
-    # Check if cert-manager is already installed (Issue 6 - Fixed)
+    # If the cert-manager namespace already exists, check whether the version matches
     if kubectl get namespace cert-manager &>/dev/null; then
         EXISTING_CM_VERSION=$(kubectl get deployment cert-manager -n cert-manager -o jsonpath='{.metadata.labels.app\.kubernetes\.io/version}' 2>/dev/null || echo "unknown")
         print_info "cert-manager already installed (version: $EXISTING_CM_VERSION)"
 
-        # Normalize versions by removing 'v' prefix for comparison
+        # Strip the 'v' prefix before comparing so v1.20.0 == 1.20.0
         EXISTING_CM_VERSION_CLEAN="${EXISTING_CM_VERSION#v}"
         TARGET_CM_VERSION_CLEAN="${CERT_MANAGER_VERSION#v}"
 
@@ -447,12 +471,14 @@ if [ "$SKIP_CERT_MANAGER" = false ]; then
     fi
 
     if [ "$SKIP_CERT_MANAGER" = false ]; then
+        # Apply the cert-manager bundle (CRDs, deployments, webhooks) from the official release
         print_info "Installing cert-manager $CERT_MANAGER_VERSION..."
         retry_command "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
         RESOURCES_CREATED+=("cert-manager namespace and components")
         print_success "cert-manager installation initiated"
 
-        # Improved wait logic (Issue 13 - Fixed)
+        # Wait for the webhook deployment to become Available before proceeding;
+        # the OTel operator relies on it to validate certificate resources
         print_info "Waiting for cert-manager webhook to be ready (timeout: ${OPERATION_TIMEOUT}s)..."
         if kubectl wait --for=condition=Available --timeout=${OPERATION_TIMEOUT}s -n cert-manager deployment/cert-manager-webhook 2>/dev/null; then
             print_success "cert-manager webhook is ready"
@@ -468,7 +494,8 @@ if [ "$SKIP_CERT_MANAGER" = false ]; then
             fi
         fi
 
-        # Verify cert-manager is functional
+        # Confirm the ValidatingWebhookConfiguration was registered, which proves
+        # cert-manager's admission webhook is active and ready to issue certificates
         print_info "Verifying cert-manager functionality..."
         if kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io cert-manager-webhook &>/dev/null; then
             print_success "cert-manager is ready"
@@ -481,17 +508,24 @@ else
     print_info "Skipping cert-manager installation (--skip-cert-manager flag set)"
 fi
 
-# Update helm repo
+# ─── Step 2: Add OpenObserve Helm Repository ──────────────────────────────────
+# Register the OpenObserve chart repo so the collector chart can be resolved later
+echo ""
+print_info "[Step 2/6] Adding OpenObserve Helm repository..."
 print_info "Adding OpenObserve helm repository..."
 retry_command "helm repo add openobserve https://charts.openobserve.ai"
 retry_command "helm repo update"
 print_success "Helm repository updated"
 
-# Install Prometheus operator CRDs
+# ─── Step 3: Install Prometheus Operator CRDs ─────────────────────────────────
+# The OTel collector uses ServiceMonitor/PodMonitor CRDs to scrape Prometheus metrics
+echo ""
+print_info "[Step 3/6] Installing Prometheus Operator CRDs $PROMETHEUS_OPERATOR_VERSION..."
 if [ "$SKIP_OTEL_OPERATOR" = false ]; then
     print_info "Installing Prometheus operator CRDs (version $PROMETHEUS_OPERATOR_VERSION)..."
 
-    # Check for existing resources using CRDs (Issue 7 - Fixed)
+    # Warn if existing ServiceMonitor/PodMonitor resources are present; updating CRDs
+    # may briefly disrupt any running Prometheus operators that depend on them
     existing_resources=()
     if kubectl get servicemonitors.monitoring.coreos.com --all-namespaces &>/dev/null; then
         count=$(kubectl get servicemonitors.monitoring.coreos.com --all-namespaces --no-headers 2>/dev/null | wc -l)
@@ -522,7 +556,7 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
     fi
 
     if [ "$SKIP_OTEL_OPERATOR" = false ]; then
-        # Use server-side apply for large CRDs to avoid annotation size limits
+        # Use server-side apply to avoid the 262144-byte annotation size limit on large CRDs
         retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml"
         retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml"
         retry_command "kubectl apply --server-side=true -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/${PROMETHEUS_OPERATOR_VERSION}/example/prometheus-operator-crd/monitoring.coreos.com_scrapeconfigs.yaml"
@@ -530,7 +564,8 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
         RESOURCES_CREATED+=("Prometheus Operator CRDs")
         print_success "Prometheus operator CRDs installed"
 
-        # Wait for CRDs to be established (Issue 14 - Fixed)
+        # Poll each CRD until it reaches the Established condition before proceeding;
+        # the OTel operator will fail to start if the CRDs are not yet registered
         print_info "Waiting for CRDs to be established..."
         for crd in servicemonitors.monitoring.coreos.com podmonitors.monitoring.coreos.com scrapeconfigs.monitoring.coreos.com probes.monitoring.coreos.com; do
             timeout=60
@@ -550,13 +585,16 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
             fi
         done
 
-        # Install OpenTelemetry operator
+        # ─── Step 4: Install OpenTelemetry Operator ───────────────────────────
+        # The OTel operator manages the collector DaemonSet and auto-instrumentation resources
+        echo ""
+        print_info "[Step 4/6] Installing OpenTelemetry Operator $OTEL_OPERATOR_VERSION..."
         print_info "Installing OpenTelemetry operator..."
         retry_command "kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v${OTEL_OPERATOR_VERSION}/opentelemetry-operator.yaml"
         RESOURCES_CREATED+=("OpenTelemetry Operator")
         print_success "OpenTelemetry operator installed"
 
-        # Wait for operator to be ready (Issue 15 - Fixed)
+        # Wait for the operator's controller-manager deployment to become Available
         print_info "Waiting for OpenTelemetry operator to be ready..."
         if kubectl wait --for=condition=Available --timeout=${OPERATION_TIMEOUT}s -n opentelemetry-operator-system deployment/opentelemetry-operator-controller-manager 2>/dev/null; then
             print_success "OpenTelemetry operator deployment is ready"
@@ -566,17 +604,16 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
             sleep 30
         fi
 
-        # Wait for webhook certificates to be issued by cert-manager (critical for collector installation)
+        # Poll for the webhook TLS secret that cert-manager creates for the OTel operator;
+        # the collector Helm chart will fail to install if this secret is absent
         print_info "Waiting for OpenTelemetry operator webhook certificates to be ready..."
         print_info "This may take up to 2 minutes while cert-manager issues certificates..."
 
-        # Wait for the webhook secret to exist
         timeout=120
         elapsed=0
         webhook_ready=false
 
         while [ $elapsed -lt $timeout ]; do
-            # Check if webhook secret exists and has data
             if kubectl get secret -n opentelemetry-operator-system opentelemetry-operator-controller-manager-service-cert &>/dev/null; then
                 webhook_ready=true
                 print_success "Webhook certificates are ready"
@@ -594,7 +631,7 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
             print_warning "Installation may fail. Consider waiting and retrying if it fails."
         fi
 
-        # Additional wait for webhook to be fully functional
+        # Give the webhook service a moment to become fully responsive after the cert is ready
         print_info "Waiting for webhook service to be responsive..."
         sleep 15
     fi
@@ -602,7 +639,10 @@ else
     print_info "Skipping OpenTelemetry operator installation (--skip-otel-operator flag set)"
 fi
 
-# Create namespace
+# ─── Step 5: Create Collector Namespace ───────────────────────────────────────
+# All OpenObserve collector resources are isolated in a dedicated namespace
+echo ""
+print_info "[Step 5/6] Creating collector namespace '$NAMESPACE'..."
 print_info "Creating namespace: $NAMESPACE..."
 if kubectl create namespace "$NAMESPACE" 2>/dev/null; then
     RESOURCES_CREATED+=("Namespace: $NAMESPACE")
@@ -611,7 +651,7 @@ else
     print_info "Namespace already exists"
 fi
 
-# Wait for namespace to be active (Issue 16 - Fixed)
+# Wait until the namespace reaches Active phase before applying resources into it
 timeout=30
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
@@ -624,8 +664,11 @@ while [ $elapsed -lt $timeout ]; do
     elapsed=$((elapsed + 2))
 done
 
-# Create temporary values file for secure credential handling (Issue 2 - Fixed)
-# Clean up any old temp files first
+# ─── Step 6: Build Helm Values File ───────────────────────────────────────────
+# Write credentials to a mode-600 temp file instead of passing them as --set flags
+# to prevent them from appearing in shell history or process listings
+echo ""
+print_info "[Step 6/6] Installing OpenObserve Collector via Helm..."
 rm -f /tmp/o2c-values.*.yaml 2>/dev/null || true
 
 TEMP_VALUES_FILE=$(mktemp /tmp/o2c-values.XXXXXX.yaml)
@@ -650,7 +693,9 @@ exporters:
       Authorization: "Basic ${ACCESS_KEY}"
 EOF
 
-# Install OpenObserve collector
+# ─── Step 7: Install OpenObserve Collector via Helm ───────────────────────────
+# Performs a helm upgrade --install so the same command works for both fresh installs
+# and upgrades of an existing release
 print_info "Installing OpenObserve collector..."
 if helm --namespace "$NAMESPACE" upgrade --install o2c openobserve/openobserve-collector -f "$TEMP_VALUES_FILE" --timeout="${OPERATION_TIMEOUT}s"; then
     RESOURCES_CREATED+=("OpenObserve Collector: o2c in namespace $NAMESPACE")
@@ -660,16 +705,16 @@ else
     exit 1
 fi
 
-# Clean up temporary files immediately after use
+# Remove the values file immediately after use so credentials are not left on disk
 rm -f "$TEMP_VALUES_FILE"
 TEMP_FILES=()
 
 echo ""
 
-# Post-installation health checks (Issue 25 - Fixed)
+# ─── Step 8: Post-Installation Health Checks ──────────────────────────────────
+# Verify that collector pods reach Running state and are not crash-looping
 print_info "Running post-installation health checks..."
 
-# Check if collector pods are running
 print_info "Checking collector pod status..."
 sleep 10  # Give pods time to start
 
@@ -698,7 +743,7 @@ else
     print_info "  kubectl describe pods -n $NAMESPACE -l app.kubernetes.io/name=openobserve-collector"
 fi
 
-# Check for crashlooping pods
+# Alert if any pod has restarted more than twice, indicating a crash-loop
 crashlooping=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{.items[?(@.status.containerStatuses[*].restartCount>2)].metadata.name}' 2>/dev/null)
 if [ -n "$crashlooping" ]; then
     print_warning "Some pods are crashlooping: $crashlooping"
@@ -709,7 +754,7 @@ echo ""
 print_success "Installation complete!"
 echo ""
 
-# Informational output
+# ─── Post-Install: Usage Information ─────────────────────────────────────────
 print_info "The collector will now:"
 print_info "  • Collect metrics from your Kubernetes cluster"
 print_info "  • Collect events from your Kubernetes cluster"
@@ -724,14 +769,14 @@ print_info "  Python: instrumentation.opentelemetry.io/inject-python: \"openobse
 print_info "  Go:     instrumentation.opentelemetry.io/inject-go: \"openobserve-collector/openobserve-go\""
 echo ""
 
-# Resource recommendations (Issue 31 - Fixed)
+# ─── Post-Install: Resource Sizing Guidance ───────────────────────────────────
 print_info "Resource Recommendations:"
 print_info "  Small clusters (<50 nodes):   CPU: 200m-500m, Memory: 256Mi-512Mi"
 print_info "  Medium clusters (50-200 nodes): CPU: 500m-1, Memory: 512Mi-1Gi"
 print_info "  Large clusters (>200 nodes):  CPU: 1-2, Memory: 1Gi-2Gi"
 echo ""
 
-# Troubleshooting guidance (Issue 27 - Fixed)
+# ─── Post-Install: Troubleshooting Reference ──────────────────────────────────
 print_info "Troubleshooting:"
 print_info "  Check collector status:    kubectl get pods -n $NAMESPACE"
 print_info "  View collector logs:       kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=openobserve-collector"
@@ -747,5 +792,5 @@ echo ""
 
 print_success "Check your OpenObserve dashboard for incoming data: $ENDPOINT"
 
-# Clear trap since we completed successfully
+# Deregister the error trap now that the script completed successfully
 trap - ERR INT TERM
