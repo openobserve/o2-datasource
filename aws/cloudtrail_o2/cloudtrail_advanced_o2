@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation stack for sending CloudTrail logs to OpenObserve via Kinesis Firehose. Supports per-account and per-region filtering for org-wide CloudTrail buckets.
+
+Parameters:
+  HttpEndpointName:
+    Type: String
+    Description: Name of the HTTP endpoint for Kinesis Firehose.
+  AccessKey:
+    Type: String
+    Description: Access key for authentication with the HTTP endpoint.
+  HttpEndpointUrl:
+    Type: String
+    Description: URL of the HTTP endpoint for Kinesis Firehose.
+  S3BucketCloudTrailName:
+    Type: String
+    Description: Name of the existing CloudTrail S3 bucket. For an org-wide trail, this is the single bucket containing all member accounts.
+  S3BackupBucket:
+    Type: String
+    Description: Name of the S3 bucket for Firehose backup. This must either be the same as the CloudTrail bucket or a separate bucket.
+  AllowedAccountIds:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated AWS account IDs to forward to OpenObserve
+      (e.g. "111122223333,444455556666"). Leave EMPTY to forward ALL accounts.
+  AllowedRegions:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated AWS regions to forward (e.g. "us-east-1,us-west-2").
+      Leave EMPTY to forward ALL regions.
+
+Resources:
+  # IAM Role for Kinesis Firehose
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}"
+                  - !Sub "arn:aws:s3:::${S3BackupBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                Resource: "*"
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_LambdaRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketCloudTrailName}"
+                  - !Sub "arn:aws:s3:::${S3BucketCloudTrailName}/*"
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function
+  CloudTrailProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "OpenObserve_Processor-${AWS::StackName}"
+      Handler: index.handler
+      Runtime: python3.13
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          HttpEndpointName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+          AllowedAccountIds: !Ref AllowedAccountIds
+          AllowedRegions: !Ref AllowedRegions
+      RecursiveLoop: Terminate
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import gzip
+          import re
+          import os
+          from io import BytesIO
+
+          # Parsed once per cold start
+          ALLOWED_ACCOUNTS = {a.strip() for a in os.environ.get('AllowedAccountIds', '').split(',') if a.strip()}
+          ALLOWED_REGIONS = {r.strip() for r in os.environ.get('AllowedRegions', '').split(',') if r.strip()}
+
+          if not ALLOWED_ACCOUNTS:
+              print("AllowedAccountIds is empty - forwarding ALL accounts.")
+          else:
+              print(f"Account allowlist active: {sorted(ALLOWED_ACCOUNTS)}")
+          if not ALLOWED_REGIONS:
+              print("AllowedRegions is empty - forwarding ALL regions.")
+          else:
+              print(f"Region allowlist active: {sorted(ALLOWED_REGIONS)}")
+
+          # AWSLogs/<org-id optional>/<account-id>/CloudTrail/<region>/YYYY/MM/DD/file.json.gz
+          KEY_RE = re.compile(r'AWSLogs/(?:o-[a-z0-9]+/)?(\d{12})/CloudTrail/([^/]+)/')
+
+          def parse_key(key):
+              m = KEY_RE.search(key)
+              if not m:
+                  return None, None
+              return m.group(1), m.group(2)  # account_id, region
+
+          def flush(firehose_client, stream_name, batch):
+              # Firehose put_record_batch: max 500 records / 4 MB per call
+              for i in range(0, len(batch), 500):
+                  chunk = batch[i:i + 500]
+                  firehose_client.put_record_batch(
+                      DeliveryStreamName=stream_name,
+                      Records=[{"Data": d} for d in chunk]
+                  )
+
+          def handler(event, context):
+              s3_client = boto3.client('s3')
+              firehose_client = boto3.client('firehose')
+              firehose_stream_name = os.environ['HttpEndpointName']
+
+              for record in event['Records']:
+                  s3_event = record['s3']
+                  bucket_name = s3_event['bucket']['name']
+                  object_key = s3_event['object']['key']
+
+                  # --- Filtering: decide before downloading the object ---
+                  account_id, region = parse_key(object_key)
+
+                  if ALLOWED_ACCOUNTS and account_id not in ALLOWED_ACCOUNTS:
+                      print(f"Skipping account {account_id} (not in allowlist): {object_key}")
+                      continue
+
+                  if ALLOWED_REGIONS and region not in ALLOWED_REGIONS:
+                      print(f"Skipping region {region} (not in allowlist): {object_key}")
+                      continue
+
+                  try:
+                      # Download the .json.gz file from S3
+                      response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+                      compressed_data = response['Body'].read()
+
+                      # Decompress the .gz file
+                      with gzip.GzipFile(fileobj=BytesIO(compressed_data)) as gzipfile:
+                          extracted_data = gzipfile.read().decode('utf-8')
+
+                      # Parse the JSON content
+                      json_data = json.loads(extracted_data)
+
+                      # Check for "Records" array or digest metadata
+                      if isinstance(json_data, dict) and "Records" in json_data:
+                          batch = [json.dumps(r) + "\n" for r in json_data["Records"]]
+                          if batch:
+                              flush(firehose_client, firehose_stream_name, batch)
+                              print(f"Forwarded {len(batch)} records from {object_key} "
+                                    f"(account={account_id}, region={region})")
+                      elif "digestS3Bucket" in json_data and "digestS3Object" in json_data:
+                          # Handle digest files separately
+                          print(f"Digest file detected and skipped: {object_key}")
+                      else:
+                          # Log unexpected data format
+                          print(f"Unexpected data format: {object_key}")
+
+                  except Exception as e:
+                      # Log any errors during processing
+                      print(f"Error processing file {object_key} from bucket {bucket_name}: {str(e)}")
+
+              return {"statusCode": 200, "body": "Processed files successfully"}
+
+  # Lambda Permission for S3
+  LambdaPermissionForS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CloudTrailProcessorLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${S3BucketCloudTrailName}"
+
+#  # S3 Bucket
+#  S3BucketCloudTrail:
+#    Type: AWS::S3::Bucket
+#    Properties:
+#      BucketName: !Ref S3BucketCloudTrailName
+#      NotificationConfiguration:
+#        LambdaConfigurations:
+#          - Event: s3:ObjectCreated:*
+#            Function: !GetAtt CloudTrailProcessorLambda.Arn
+
+  # Kinesis Firehose Delivery Stream
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref HttpEndpointUrl
+          Name: !Ref HttpEndpointName
+          AccessKey: !Ref AccessKey
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          RoleARN: !GetAtt FirehoseRole.Arn
+          BucketARN: !Sub "arn:aws:s3:::${S3BackupBucket}"
+          Prefix: OpenObserve_CloudTrail/
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_CloudTrail"
+          LogStreamName: DeliveryStreamLogs
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+Outputs:
+  LambdaFunctionARN:
+    Description: ARN of the created Lambda function.
+    Value: !GetAtt CloudTrailProcessorLambda.Arn
+  KinesisFirehoseName:
+    Description: Name of the Kinesis Firehose.
+    Value: !Ref KinesisFirehose
+  S3NotificationBucket:
+    Description: Name of the S3 bucket configured for event notification.
+    Value: !Ref S3BucketCloudTrailName
+  BackupBucketName:
+    Description: Name of the backup bucket being used.
+    Value: !Ref S3BackupBucket
+  AccountFilter:
+    Description: Account IDs being forwarded (empty means all accounts).
+    Value: !Ref AllowedAccountIds
+  RegionFilter:
+    Description: Regions being forwarded (empty means all regions).
+    Value: !Ref AllowedRegions
