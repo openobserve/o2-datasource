@@ -1,0 +1,92 @@
+# OpenObserve Data Sources UI — AI integration cards
+
+What the OpenObserve **Data Sources** panel should render for each AI
+integration. One folder per integration; each contains a single
+`data-source-ui.md` describing card metadata, install command (with
+`{url}/{org}/{token}` placeholders), the paste-this snippet, the verify
+section, the troubleshooting table, and panel implementation notes.
+
+The actual installer scripts that these cards point to are handed off
+separately (see the corresponding PR to `openobserve/o2-datasource`).
+
+## Cards in this drop
+
+### Frameworks / SDKs (paste-this Python snippet)
+
+| Folder | Display name | Category |
+|---|---|---|
+| [openai/](openai/data-source-ui.md) | OpenAI | AI / Providers |
+| [anthropic/](anthropic/data-source-ui.md) | Anthropic | AI / Providers |
+| [gemini/](gemini/data-source-ui.md) | Google Gemini | AI / Providers |
+| [langchain/](langchain/data-source-ui.md) | LangChain / LangGraph | AI / Frameworks |
+| [crewai/](crewai/data-source-ui.md) | CrewAI | AI / Frameworks |
+| [google-adk/](google-adk/data-source-ui.md) | Google ADK | AI / Frameworks |
+| [openai-agents/](openai-agents/data-source-ui.md) | OpenAI Agents SDK | AI / Frameworks |
+| [openrouter/](openrouter/data-source-ui.md) | OpenRouter | AI / Gateways |
+| [litellm/](litellm/data-source-ui.md) | LiteLLM | AI / Gateways |
+| [claude-agent-sdk/](claude-agent-sdk/data-source-ui.md) | Claude Agent SDK | AI / SDKs |
+
+### CLI agents (paste-this install command)
+
+| Folder | Display name | Category |
+|---|---|---|
+| [claude-code/](claude-code/data-source-ui.md) | Claude Code | AI / Agents |
+| [codex/](codex/data-source-ui.md) | OpenAI Codex CLI | AI / Agents |
+| [opencode/](opencode/data-source-ui.md) | OpenCode | AI / Agents |
+| [cursor/](cursor/data-source-ui.md) | Cursor | AI / Agents |
+
+## Card shape (consistent across all 14)
+
+Every card follows the same five-section template — so the panel can use a
+single rendering component and pass in per-integration content:
+
+1. **Card metadata** — display name, category, icon filename, tagline,
+   supported runtime.
+2. **Section 1 — Install** — a single `curl | bash` command (or
+   `pip install` / `npm install -g` for agents that ship via their native
+   package manager). Uses `{url}`, `{org}`, `{token}` placeholders the
+   panel substitutes at render time.
+3. **Section 2 — Paste this into your app** — the OTel + OpenObserve
+   import snippet. For framework integrations this is 4–6 lines of Python.
+   For CLI agents this section describes the config file the installer
+   wrote.
+4. **Section 3 — Verify** — the action that produces a trace + what to
+   look for in OpenObserve (span names, attribute filters).
+5. **Section 4 — Troubleshooting** — table of symptom → fix.
+
+Each card also has a "Panel implementation notes" subsection — call-outs
+for the frontend team about things specific to that card (e.g. crewai's
+`init → instrumentor` order warning, cursor's GUI-only verification
+caveat).
+
+## Placeholders the panel must substitute
+
+| Token | What | Example |
+|---|---|---|
+| `{url}` | OpenObserve base URL (no trailing slash) | `https://api.openobserve.ai` |
+| `{org}` | OpenObserve org identifier | `default` |
+| `{token}` | The full `Authorization` header value, **without** the leading `Basic ` (the snippet already adds it) | `bWVAZXhhbXBsZS5jb206bXktcGFzcw==` (placeholder) |
+
+Token is the base64 of `email:password`. The placeholder above decodes to
+`me@example.com:my-pass` — substitute your own creds at render time. The card
+snippets all use `--token="Basic {token}"`, so passing the raw base64 value
+is correct.
+
+## Cards that need a "watch out" visual
+
+Each of these warrants a small ⚠️ or callout in the panel chrome — they
+have non-obvious behavior the snippet alone won't communicate:
+
+- **crewai** — snippet order is `init → instrumentor` (reverse of every
+  other framework card). Detail in [crewai/data-source-ui.md §2](crewai/data-source-ui.md).
+- **codex** — emits logs + metrics, not traces. The card's verify section
+  tells users to check the Logs view, not Traces, which the panel should
+  reflect (different default tab after install).
+- **cursor** — verification requires Mac + Cursor IDE open. The card calls
+  this out; the panel might want a "macOS only" badge.
+
+## Feedback loop
+
+Each card's "Reference link" section also lists doc deltas the panel team
+should pipe back to `openobserve-docs`. Most cards have 0–1 deltas;
+langchain and crewai have several.
