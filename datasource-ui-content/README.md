@@ -85,6 +85,57 @@ have non-obvious behavior the snippet alone won't communicate:
 - **cursor** — verification requires Mac + Cursor IDE open. The card calls
   this out; the panel might want a "macOS only" badge.
 
+## `manifest.json` — integration index
+
+`manifest.json` is the machine-readable index the panel reads to render the
+sidebar tabs and integration cards. Each entry points at one of the folders
+documented above.
+
+### Category slugs
+
+The `category` field on each entry controls which sidebar tab the integration
+appears under:
+
+| `category` slug   | Sidebar tab            | What belongs here                                                  |
+|-------------------|------------------------|--------------------------------------------------------------------|
+| `model-providers` | Model Providers        | Foundation model APIs (OpenAI, Anthropic, Google Gemini, …)        |
+| `frameworks`      | AI Frameworks & Agents | Agent/LLM frameworks and SDKs (LangChain, CrewAI, OpenAI Agents, …)|
+| `gateways`        | AI Gateways & Proxies  | Routing layers and LLM proxies (OpenRouter, LiteLLM, …)            |
+| `no-code`         | No-Code Platforms      | Visual / no-code AI workflow builders                              |
+| `analytics`       | Analytics & Evaluation | Evaluation, tracing, and observability tooling for LLMs            |
+| `tools`           | Tools & Integrations   | General tools and miscellaneous integrations                       |
+| `popular`         | Popular (only if used) | Curated highlight tab — only rendered when at least one entry uses it |
+
+### Adding a new integration
+
+1. Add the card folder + `data-source-ui.md` (see sections above).
+2. Append a new object to the `integrations` array in `manifest.json`:
+
+   ```json
+   {
+     "slug": "my-integration",
+     "name": "My Integration",
+     "category": "frameworks",
+     "order": 15,
+     "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/my-integration/",
+     "keywords": ["my", "integration", "framework"]
+   }
+   ```
+
+3. Field reference:
+
+   | Field      | Required | Notes                                                                |
+   |------------|----------|----------------------------------------------------------------------|
+   | `slug`     | yes      | URL-safe, lowercase, hyphenated. Must match the card folder name and be unique. |
+   | `name`     | yes      | Display name shown in the UI card and tab.                           |
+   | `category` | yes      | One of the slugs from the table above.                               |
+   | `order`    | yes      | Sort order within the category (lower numbers appear first).         |
+   | `docURL`   | yes      | Link to the published integration docs. Leave as `""` if not yet live. |
+   | `keywords` | yes      | Search keywords; include common aliases and synonyms.                |
+
+4. Keep `order` values unique within a category to avoid ambiguous sorting.
+5. Validate that the JSON parses (e.g. `python -m json.tool manifest.json`) before committing.
+
 ## Feedback loop
 
 Each card's "Reference link" section also lists doc deltas the panel team
