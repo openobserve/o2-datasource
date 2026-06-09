@@ -1,36 +1,27 @@
-# LiteLLM — Data Sources UI panel content
+# LiteLLM
 
-What the OpenObserve **Data Sources → AI → LiteLLM** panel should render.
+**AI / Frameworks · Python 3.10–3.13** — Trace LLM calls across 100+ providers via a unified interface.
 
----
-
-## Card metadata
-
-| Field | Value |
-|---|---|
-| Display name | LiteLLM |
-| Category | AI / Frameworks |
-| Icon | `litellm.svg` |
-| Tagline | Trace LLM calls across 100+ providers via a unified interface |
-| Supported runtime | Python 3.9+ |
-
-## Section 1 — Install
+## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/openobserve-telemetry-installers/main/frameworks/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
   --integration=litellm \
   --url={url} \
   --org={org} \
   --token="Basic {token}"
 ```
 
-**What this does:** installs `openobserve-telemetry-sdk`,
-`openinference-instrumentation-litellm`, `litellm`, `python-dotenv` via pip.
-Uses the **OpenInference** instrumentor.
+Installs `openobserve-telemetry-sdk`, `openinference-instrumentation-litellm`, `litellm`, `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
 
-## Section 2 — Paste this into your app
+## 2. Add to your app
+
+Put these lines at the top of your entrypoint, **before** importing LiteLLM:
 
 ```python
+from dotenv import load_dotenv
+load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+
 from openinference.instrumentation.litellm import LiteLLMInstrumentor
 from openobserve import openobserve_init
 
@@ -38,40 +29,24 @@ LiteLLMInstrumentor().instrument()
 openobserve_init()
 ```
 
-> Four lines at the top, **before** importing `litellm`.
+`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
 
-Works for `litellm.completion(...)`, async (`acompletion`), and streaming.
-Switching between providers (`gpt-4o-mini`, `claude-sonnet-4`, etc.) produces
-separate spans with different `llm_model_name` values.
+## 3. Run your app
 
-## Section 3 — Verify
+Make any LiteLLM call — your app already has the target provider's API key configured (e.g. `OPENAI_API_KEY`):
 
-> Call `litellm.completion(...)`.
+```python
+import litellm
+litellm.completion(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "hi"}],
+)
+```
 
-Open Traces, filter `operation_name = completion`. Spans include
-`llm_model_name`, `llm_provider`, `llm_token_count_prompt`,
-`llm_token_count_completion`, `llm_invocation_parameters` (full request JSON),
-`llm_usage_cost_input/output`.
+## 4. Check OpenObserve
 
-E2E example produced 1 span for a single completion call.
-
-## Section 4 — Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `botocore` warnings for Bedrock / SageMaker | Cosmetic — LiteLLM tries to load all backend SDKs at import; ignored if you're not using AWS |
-| No spans appear | Move the four lines above `import litellm` |
-| Provider key errors | Set the right `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / etc. in env |
+Open **Traces** and filter `operation_name=completion`. You'll see a span per LiteLLM call with model, token usage, and cost.
 
 ---
 
-## Panel implementation notes
-
-- Same template + copy-button as other framework cards.
-- For multi-provider apps, the panel could surface a "Compare models by cost"
-  dashboard link.
-
-## Reference link
-
-Full integration docs:
-[openobserve-docs/docs/integration/ai/frameworks/litellm.md](../../openobserve-docs/docs/integration/ai/frameworks/litellm.md)
+Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/gateways/litellm-proxy/) or reach out to us on [Slack](https://short.openobserve.ai/community).

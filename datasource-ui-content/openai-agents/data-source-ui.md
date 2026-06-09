@@ -1,39 +1,27 @@
-# OpenAI Agents SDK — Data Sources UI panel content
+# OpenAI Agents SDK
 
-What the OpenObserve **Data Sources → AI → OpenAI Agents** panel should render.
+**AI / Frameworks · Python 3.10–3.13** — trace every agent workflow, handoff, and LLM call.
 
----
-
-## Card metadata
-
-| Field | Value |
-|---|---|
-| Display name | OpenAI Agents SDK |
-| Category | AI / Frameworks |
-| Icon | `openai-agents.svg` (or reuse openai.svg) |
-| Tagline | Trace every agent workflow, handoff, and LLM call |
-| Supported runtime | Python 3.10+ |
-
-## Section 1 — Install
+## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/openobserve-telemetry-installers/main/frameworks/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
   --integration=openai-agents \
   --url={url} \
   --org={org} \
   --token="Basic {token}"
 ```
 
-**What this does:** installs `openobserve-telemetry-sdk`,
-`openinference-instrumentation-openai-agents`, `openai-agents`,
-`python-dotenv` via pip; verifies imports; writes `OPENOBSERVE_*` keys to
-`.env`.
+Installs `openobserve-telemetry-sdk`, `openinference-instrumentation-openai-agents`, `openai-agents`, and `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
 
-Uses the **OpenInference** instrumentor (like `google-adk`).
+## 2. Add to your app
 
-## Section 2 — Paste this into your app
+Put these lines at the top of your entrypoint, **before** importing the Agents SDK:
 
 ```python
+from dotenv import load_dotenv
+load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from openobserve import openobserve_init
 
@@ -41,50 +29,25 @@ OpenAIAgentsInstrumentor().instrument()
 openobserve_init()
 ```
 
-> Four lines at the top of your app entrypoint, **before** importing the
-> `agents` module.
+`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
 
-Works for any agent invoked via `Runner.run()` — single-agent, tools,
-multi-agent handoffs all produce nested span trees.
+## 3. Run a workflow
 
-## Section 3 — Verify
+Your app already has `OPENAI_API_KEY` configured. Define an agent and run it — every call is traced automatically:
 
-> Call `Runner.run()` on any Agent.
+```python
+from agents import Agent, Runner
 
-Open Traces, look for `Agent workflow` (kind: `CHAIN`) root spans. Each agent
-run produces a four-level tree:
+agent = Agent(name="Assistant", instructions="You are a helpful assistant.")
 
-```
-Agent workflow [CHAIN]
-└── Assistant
-    └── turn
-        └── response [LLM]   (one per model call)
+result = Runner.run_sync(agent, "hi")
+print(result.final_output)
 ```
 
-Attributes include `openinference_span_kind`, `llm_model_name`,
-`llm_token_count_prompt`, `llm_token_count_completion`,
-`llm_token_count_completion_details_reasoning`,
-`llm_token_count_prompt_details_cache_read`, `llm_usage_cost_input/output`.
+## 4. Check OpenObserve
 
-E2E example produced 5 spans for a single-agent no-tools workflow.
-
-## Section 4 — Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `ImportError: No module named 'agents'` | The `pip install openai-agents` is the install — module name is `agents`, not `openai_agents` |
-| Handoff produces only one CHAIN span | Make sure both agents are passed via `handoffs=[other_agent]` |
-| No spans appear | Move the four lines above `from agents import ...` |
+Open **Traces** and filter for spans named `Agent workflow`. You'll see the agent run — model calls, tool calls, handoffs — as a span tree.
 
 ---
 
-## Panel implementation notes
-
-- Same template + copy-button as other framework cards.
-- For multi-agent workflows, the panel could optionally surface a link to a
-  "Service Map" view of handoff chains.
-
-## Reference link
-
-Full integration docs:
-[openobserve-docs/docs/integration/ai/frameworks/openai-agents.md](../../openobserve-docs/docs/integration/ai/frameworks/openai-agents.md)
+Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/) or reach out to us on [Slack](https://short.openobserve.ai/community).

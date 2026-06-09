@@ -12,8 +12,8 @@
         "from opentelemetry.instrumentation.openai import OpenAIInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from opentelemetry.instrumentation.openai import OpenAIInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing the OpenAI client.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom opentelemetry.instrumentation.openai import OpenAIInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing the OpenAI client.",
       "extra_env": {},
       "verify_step": "Make any OpenAI call (e.g. client.chat.completions.create(...)). Then in OpenObserve, open Traces and filter by gen_ai_system=openai."
     },
@@ -28,8 +28,8 @@
         "from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor\nfrom openobserve import openobserve_init\n\nAnthropicInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing the Anthropic client.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom opentelemetry.instrumentation.anthropic import AnthropicInstrumentor\nfrom openobserve import openobserve_init\n\nAnthropicInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing the Anthropic client.",
       "extra_env": {},
       "verify_step": "Make any Claude API call (e.g. client.messages.create(...)). Then in OpenObserve, open Traces and filter by gen_ai_system=Anthropic."
     },
@@ -44,10 +44,10 @@
         "from opentelemetry.instrumentation.google_generativeai import GoogleGenerativeAiInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from opentelemetry.instrumentation.google_generativeai import GoogleGenerativeAiInstrumentor\nfrom openobserve import openobserve_init\n\nGoogleGenerativeAiInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing the Gemini SDK.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom opentelemetry.instrumentation.google_generativeai import GoogleGenerativeAiInstrumentor\nfrom openobserve import openobserve_init\n\nGoogleGenerativeAiInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing the Gemini SDK.",
       "extra_env": {},
-      "verify_step": "Make any Gemini call (e.g. client.models.generate_content(...)). Then in OpenObserve, open Traces and filter by gen_ai_system=Google."
+      "verify_step": "Make any Gemini call (e.g. client.models.generate_content(...)). Then in OpenObserve, open Traces and filter by gen_ai_provider_name=gcp.gen_ai."
     },
     "langchain": {
       "packages": [
@@ -62,10 +62,10 @@
         "from opentelemetry.instrumentation.langchain import LangchainInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from opentelemetry.instrumentation.langchain import LangchainInstrumentor\nfrom openobserve import openobserve_init\n\nLangchainInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing any LangChain modules.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom opentelemetry.instrumentation.langchain import LangchainInstrumentor\nfrom openobserve import openobserve_init\n\nLangchainInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing any LangChain modules.",
       "extra_env": {},
-      "verify_step": "Invoke any LangChain chain (chain.invoke(...)). Then in OpenObserve, open Traces and look for langchain_request_type spans."
+      "verify_step": "Invoke any LangChain chain (chain.invoke(...)). Then in OpenObserve, open Traces and look for the chain span tree (e.g. RunnableSequence.workflow, ChatOpenAI.chat); filter by the traceloop_span_kind attribute."
     },
     "crewai": {
       "packages": [
@@ -78,12 +78,12 @@
         "from openinference.instrumentation.crewai import CrewAIInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "import os\nos.environ[\"CREWAI_TELEMETRY_OPT_OUT\"] = \"true\"\n\nfrom openobserve import openobserve_init\nopenobserve_init()\n\nfrom openinference.instrumentation.crewai import CrewAIInstrumentor\nCrewAIInstrumentor().instrument()",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nimport os\nos.environ[\"CREWAI_TELEMETRY_OPT_OUT\"] = \"true\"\n\nfrom openobserve import openobserve_init\nopenobserve_init()\n\nfrom openinference.instrumentation.crewai import CrewAIInstrumentor\nCrewAIInstrumentor().instrument()",
       "instruction": "Paste these lines at the top of your app entrypoint, BEFORE importing CrewAI or the instrumentor. Order matters: openobserve_init() must run first so its TracerProvider is the one CrewAI sees. CREWAI_TELEMETRY_OPT_OUT=true disables CrewAI's built-in telemetry that conflicts with OTel.",
       "extra_env": {
         "CREWAI_TELEMETRY_OPT_OUT": "true"
       },
-      "verify_step": "Call crew.kickoff() on any Crew. Then in OpenObserve, open Traces and filter by gen_ai_system=crewai."
+      "verify_step": "Call crew.kickoff() on any Crew. Then in OpenObserve, open Traces and look for Crew_<uuid>.kickoff spans."
     },
     "google-adk": {
       "packages": [
@@ -96,8 +96,8 @@
         "from openinference.instrumentation.google_adk import GoogleADKInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from openinference.instrumentation.google_adk import GoogleADKInstrumentor\nfrom openobserve import openobserve_init\n\nGoogleADKInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing any google.adk modules.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom openinference.instrumentation.google_adk import GoogleADKInstrumentor\nfrom openobserve import openobserve_init\n\nGoogleADKInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing any google.adk modules.",
       "extra_env": {},
       "verify_step": "Run any ADK agent via Runner.run_async(). Then in OpenObserve, open Traces and look for invocation [<app_name>] spans."
     },
@@ -111,7 +111,7 @@
         "from openobserve import openobserve_init",
         "from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage"
       ],
-      "snippet": "from openobserve import openobserve_init\nopenobserve_init()\n\nfrom opentelemetry import trace\ntracer = trace.get_tracer(__name__)\n\n# Wrap each query() call:\n# with tracer.start_as_current_span(\"claude_agent.query\") as span:\n#     span.set_attribute(\"claude_agent.prompt\", prompt[:100])\n#     async for message in query(prompt=prompt, options=options):\n#         if isinstance(message, ResultMessage):\n#             span.set_attribute(\"claude_agent.num_turns\", message.num_turns)\n#             if message.usage:\n#                 span.set_attribute(\"claude_agent.input_tokens\", message.usage.get(\"input_tokens\", 0))\n#                 span.set_attribute(\"claude_agent.output_tokens\", message.usage.get(\"output_tokens\", 0))",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom openobserve import openobserve_init\nopenobserve_init()\n\nfrom opentelemetry import trace\ntracer = trace.get_tracer(__name__)\n\n# Wrap each query() call:\n# with tracer.start_as_current_span(\"claude_agent.query\") as span:\n#     span.set_attribute(\"claude_agent.prompt\", prompt[:100])\n#     async for message in query(prompt=prompt, options=options):\n#         if isinstance(message, ResultMessage):\n#             span.set_attribute(\"claude_agent.num_turns\", message.num_turns)\n#             if message.usage:\n#                 span.set_attribute(\"claude_agent.input_tokens\", message.usage.get(\"input_tokens\", 0))\n#                 span.set_attribute(\"claude_agent.output_tokens\", message.usage.get(\"output_tokens\", 0))",
       "instruction": "Paste the imports + openobserve_init() at the top, then wrap each query() call in a span as shown. Claude Agent SDK has no auto-instrumentor — spans are created manually from ResultMessage data.",
       "extra_env": {},
       "verify_step": "Run any query() call wrapped in the span. Then in OpenObserve, open Traces and filter by operation name claude_agent.query."
@@ -127,8 +127,8 @@
         "from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIAgentsInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing the agents module.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIAgentsInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing the agents module.",
       "extra_env": {},
       "verify_step": "Call Runner.run() on any Agent. Then in OpenObserve, open Traces and look for Agent workflow (CHAIN) spans."
     },
@@ -143,7 +143,7 @@
         "from openinference.instrumentation.openai import OpenAIInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from openinference.instrumentation.openai import OpenAIInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIInstrumentor().instrument()\nopenobserve_init()\n\n# Then construct your OpenAI client pointed at OpenRouter:\n# client = OpenAI(api_key=os.environ[\"OPENROUTER_API_KEY\"],\n#                 base_url=\"https://openrouter.ai/api/v1\")",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom openinference.instrumentation.openai import OpenAIInstrumentor\nfrom openobserve import openobserve_init\n\nOpenAIInstrumentor().instrument()\nopenobserve_init()\n\n# Then construct your OpenAI client pointed at OpenRouter:\n# client = OpenAI(api_key=os.environ[\"OPENROUTER_API_KEY\"],\n#                 base_url=\"https://openrouter.ai/api/v1\")",
       "instruction": "Paste the imports + .instrument() + openobserve_init() at the top, then construct your OpenAI client with base_url=https://openrouter.ai/api/v1.",
       "extra_env": {},
       "verify_step": "Make any OpenRouter request (client.chat.completions.create(...)). Then in OpenObserve, open Traces and filter by llm_model_name containing a /."
@@ -159,8 +159,8 @@
         "from openinference.instrumentation.litellm import LiteLLMInstrumentor",
         "from openobserve import openobserve_init"
       ],
-      "snippet": "from openinference.instrumentation.litellm import LiteLLMInstrumentor\nfrom openobserve import openobserve_init\n\nLiteLLMInstrumentor().instrument()\nopenobserve_init()",
-      "instruction": "Paste these four lines at the top of your app entrypoint, before importing litellm.",
+      "snippet": "from dotenv import load_dotenv\nload_dotenv()\n\nfrom openinference.instrumentation.litellm import LiteLLMInstrumentor\nfrom openobserve import openobserve_init\n\nLiteLLMInstrumentor().instrument()\nopenobserve_init()",
+      "instruction": "Paste these lines at the top of your app entrypoint, before importing litellm.",
       "extra_env": {},
       "verify_step": "Call litellm.completion(...). Then in OpenObserve, open Traces and filter by operation_name=completion."
     }

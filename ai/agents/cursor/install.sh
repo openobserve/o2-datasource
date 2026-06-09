@@ -140,21 +140,31 @@ if (( SKIP_BOOTSTRAP == 1 )); then
         exit 1
     fi
 else
-    print_step "1/2" "Running upstream cursor-otel-hook setup.sh..."
-    SETUP_TMP="$(mktemp)"
-    TEMP_FILES+=("$SETUP_TMP")
-    # Map UPSTREAM_REPO -> raw url for setup.sh
-    raw_base="$(printf '%s' "$UPSTREAM_REPO" | sed -E 's#^https?://github.com/#https://raw.githubusercontent.com/#; s#\.git$##')"
-    setup_url="$raw_base/$UPSTREAM_REF/setup.sh"
-    if ! retry_command curl -fsSL "$setup_url" -o "$SETUP_TMP"; then
-        print_error "Failed to fetch $setup_url"
-        print_info "Run install upstream manually, then re-run with --skip-bootstrap:"
+    print_step "1/2" "Cloning + running upstream cursor-otel-hook setup.sh..."
+    if ! command -v git >/dev/null 2>&1; then
+        print_error "git is required to bootstrap cursor-otel-hook."
+        print_info "Install git, or install upstream manually and re-run with --skip-bootstrap:"
         print_info "  $UPSTREAM_REPO"
         exit 1
     fi
-    bash "$SETUP_TMP"
-    RESOURCES_CREATED+=("upstream-bootstrap: cursor-otel-hook")
-    print_success "Upstream bootstrap completed."
+    # cursor-otel-hook's setup.sh creates ./venv, runs `pip install -e .`, and
+    # points Cursor's hooks.json at "$(pwd)/venv" — so the repo must be CLONED
+    # to a PERSISTENT location (not a temp file) and setup.sh run from inside it.
+    # Deleting the clone afterwards would break the editable install + the hook.
+    CLONE_DIR="${CURSOR_OTEL_HOOK_DIR:-$HOME/.cursor-otel-hook}"
+    if [ -d "$CLONE_DIR/.git" ]; then
+        print_info "Reusing existing clone: $CLONE_DIR"
+    else
+        if ! retry_command git clone --depth 1 --branch "$UPSTREAM_REF" "$UPSTREAM_REPO" "$CLONE_DIR"; then
+            print_error "Failed to clone $UPSTREAM_REPO (ref: $UPSTREAM_REF)"
+            print_info "Install upstream manually, then re-run with --skip-bootstrap:"
+            print_info "  $UPSTREAM_REPO"
+            exit 1
+        fi
+    fi
+    ( cd "$CLONE_DIR" && bash setup.sh )
+    RESOURCES_CREATED+=("upstream cursor-otel-hook: $CLONE_DIR")
+    print_success "Upstream bootstrap completed ($CLONE_DIR)."
 fi
 
 # ── Step 2: Write/merge otel_config.json with OpenObserve values ─────────────
@@ -188,14 +198,21 @@ if path.exists() and path.stat().st_size > 0:
 
 # Managed keys — overwrite. Non-managed keys (e.g. CURSOR_OTEL_MASK_PROMPTS)
 # are preserved.
+# IMPORTANT: cursor-otel-hook reads ONLY `OTEL_EXPORTER_OTLP_ENDPOINT` and POSTs
+# spans directly to it (it must be the full URL including /v1/traces). It does
+# NOT honor `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`. So we must set the generic
+# endpoint key, and drop the upstream's localhost:4317 + INSECURE=true defaults.
 managed = {
-    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": endpoint,
+    "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
+    "OTEL_EXPORTER_OTLP_INSECURE": "false",
     "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
     "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token}",
     "OTEL_SERVICE_NAME": "cursor",
 }
 for k, v in managed.items():
     cfg[k] = v
+# Remove the stale traces-specific key if a prior run wrote it (hook ignores it).
+cfg.pop("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", None)
 
 d = path.parent
 d.mkdir(parents=True, exist_ok=True)
