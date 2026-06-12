@@ -1,40 +1,27 @@
-# Google ADK — Data Sources UI panel content
+# Google ADK
 
-What the OpenObserve **Data Sources → AI → Google ADK** panel should render.
+**AI / Frameworks · Python 3.10–3.13** — Trace every ADK agent run, LLM call, and tool execution.
 
----
-
-## Card metadata
-
-| Field | Value |
-|---|---|
-| Display name | Google ADK |
-| Category | AI / Frameworks |
-| Icon | `google-adk.svg` |
-| Tagline | Trace every ADK agent run, LLM call, and tool execution |
-| Supported runtime | Python 3.10+ |
-
-## Section 1 — Install
+## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/openobserve-telemetry-installers/main/frameworks/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
   --integration=google-adk \
   --url={url} \
   --org={org} \
   --token="Basic {token}"
 ```
 
-**What this does:** installs `openobserve-telemetry-sdk`,
-`openinference-instrumentation-google-adk`, `google-adk`, `python-dotenv` via
-pip; verifies imports; writes `OPENOBSERVE_*` keys to `.env`.
+Installs `openobserve-telemetry-sdk`, `openinference-instrumentation-google-adk`, `google-adk`, `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
 
-This integration uses the **OpenInference** instrumentor family (not
-OpenLLMetry like most provider cards). Both ecosystems co-exist in the same
-venv without conflict.
+## 2. Add to your app
 
-## Section 2 — Paste this into your app
+Put these lines at the top of your entrypoint, **before** importing the ADK:
 
 ```python
+from dotenv import load_dotenv
+load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+
 from openinference.instrumentation.google_adk import GoogleADKInstrumentor
 from openobserve import openobserve_init
 
@@ -42,51 +29,39 @@ GoogleADKInstrumentor().instrument()
 openobserve_init()
 ```
 
-> Four lines at the top of your app entrypoint, **before** importing any
-> `google.adk` modules.
+`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
 
-Works for any Agent invoked via `Runner.run_async()`. Tools and multi-turn
-agents produce the expected nested span tree.
+## 3. Run an agent
 
-## Section 3 — Verify
+Define an agent and run it. Your app already has `GOOGLE_API_KEY` configured.
 
-> Run any ADK agent via `Runner.run_async()`.
+```python
+from google.adk.agents import Agent
+from google.adk.runners import InMemoryRunner
+from google.genai import types
 
-Open Traces, look for `invocation [<app_name>]` root spans. Each invocation
-produces a tree:
+agent = Agent(
+    name="assistant",
+    model="gemini-2.0-flash",
+    instruction="You are a helpful assistant.",
+)
 
+runner = InMemoryRunner(agent=agent, app_name="assistant")
+session = runner.session_service.create_session(app_name="assistant", user_id="user")
+
+for event in runner.run(
+    user_id="user",
+    session_id=session.id,
+    new_message=types.Content(role="user", parts=[types.Part(text="What is OpenObserve?")]),
+):
+    if event.is_final_response():
+        print(event.content.parts[0].text)
 ```
-invocation [<app_name>]
-└── agent_run [<agent_name>]
-    └── call_llm (one per LLM round)
-        └── execute_tool <tool_name> (one per tool use)
-```
 
-Attributes include `gcp_vertex_agent_name`, `gen_ai.request.model`,
-`llm_usage_input_tokens`, `llm_usage_output_tokens`,
-`llm_token_count_completion_details_reasoning` (Gemini 2.5 thinking
-budget), `user_id`, `gen_ai_conversation_id`.
+## 4. Check OpenObserve
 
-E2E example produced 3 spans for a single-turn agent (invocation +
-agent_run + call_llm).
-
-## Section 4 — Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `ImportError: cannot import name 'Agent' from 'google.adk'` | Older `google-adk` version — the installer pulls latest |
-| `GOOGLE_API_KEY not set` | Add it to `.env` or your shell env |
-| No spans in OpenObserve | Move the four lines above all `google.adk` imports |
+Open **Traces** and filter for spans named `invocation [<app_name>]`. You'll see the agent invocation as a span tree (model calls, tools).
 
 ---
 
-## Panel implementation notes
-
-- Same template + copy-button pattern as the other framework cards.
-- This is the OpenInference variant — the icon set should distinguish it
-  from the OpenLLMetry providers if your panel uses ecosystem badges.
-
-## Reference link
-
-Full integration docs:
-[openobserve-docs/docs/integration/ai/frameworks/google-adk.md](../../openobserve-docs/docs/integration/ai/frameworks/google-adk.md)
+Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/google-adk/) or reach out to us on [Slack](https://short.openobserve.ai/community).

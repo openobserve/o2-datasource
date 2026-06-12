@@ -1,42 +1,27 @@
-# LangChain / LangGraph — Data Sources UI panel content
+# LangChain / LangGraph
 
-What the OpenObserve **Data Sources → AI → LangChain** panel should render.
+**AI / Frameworks · Python 3.10–3.13** — Trace every chain, LLM call, tool invocation, and retrieval step.
 
----
-
-## Card metadata
-
-| Field | Value |
-|---|---|
-| Display name | LangChain / LangGraph |
-| Category | AI / Frameworks |
-| Icon | `langchain.svg` |
-| Tagline | Trace every chain, LLM call, tool invocation, and retrieval step |
-| Supported runtime | Python 3.9+ |
-
-## Section 1 — Install
+## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/openobserve-telemetry-installers/main/frameworks/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
   --integration=langchain \
   --url={url} \
   --org={org} \
   --token="Basic {token}"
 ```
 
-**What this does:** installs `openobserve-telemetry-sdk`,
-`opentelemetry-instrumentation>=0.51b0`, `opentelemetry-instrumentation-langchain`,
-`langchain-core`, `wrapt>=1.16,<2`, `python-dotenv`. Verifies the imports
-work. Writes `OPENOBSERVE_*` keys to `.env`.
+Installs `openobserve-telemetry-sdk`, `opentelemetry-instrumentation>=0.51b0`, `opentelemetry-instrumentation-langchain`, `langchain-core`, `wrapt>=1.16,<2`, `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
 
-**Important compat note:** the LangChain instrumentor imports `wrapt`'s
-`wrap_function_wrapper` as a positional-and-keyword call. `wrapt 2.x` made
-the first arg positional-only, breaking the instrumentor. This installer
-pins `wrapt<2` to avoid the break.
+## 2. Add to your app
 
-## Section 2 — Paste this into your app
+Put these lines at the top of your entrypoint, **before** importing LangChain:
 
 ```python
+from dotenv import load_dotenv
+load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from openobserve import openobserve_init
 
@@ -44,48 +29,21 @@ LangchainInstrumentor().instrument()
 openobserve_init()
 ```
 
-> Four lines at the top of your app entrypoint, **before** importing any
-> LangChain modules.
+`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
 
-Works for LangChain chains (`prompt | llm | StrOutputParser`), LangGraph
-graphs (`StateGraph`), retrievers, tools, and any nested LLM call.
+## 3. Run your app
 
-## Section 3 — Verify
+Invoke any LangChain/LangGraph chain — your app already has the underlying model's API key configured (e.g. `OPENAI_API_KEY`):
 
-> Invoke any chain: `chain.invoke({"question": "..."})`.
+```python
+from langchain_openai import ChatOpenAI
+ChatOpenAI(model="gpt-4o-mini").invoke("hi")
+```
 
-Open Traces, look for `langchain_request_type` spans. Each chain invocation
-produces a root span with child spans for every LLM call, tool, and
-retriever. Attributes include `gen_ai.request.model`,
-`gen_ai.usage.input_tokens/output_tokens`, `llm.usage.cost_total`,
-`langchain_tool_name`, `langchain_retriever_query`.
+## 4. Check OpenObserve
 
-E2E example produced 4 spans for a `prompt | llm | output_parser` chain.
-
-## Section 4 — Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `TypeError: wrap_function_wrapper() got an unexpected keyword argument 'module'` | wrapt 2.x is installed; the installer pins wrapt<2 but if you upgraded manually, run `pip install 'wrapt<2'` |
-| `ModuleNotFoundError: langchain_core` | The installer adds `langchain-core` as a dep — re-run the installer |
-| App runs but no chain spans | Move the four lines above all LangChain imports |
+Open **Traces** and look for the chain's span tree — a top-level `<Chain>.workflow` span (e.g. `RunnableSequence.workflow`) with child spans like `ChatOpenAI.chat`. To filter, use the `traceloop_span_kind` attribute (`workflow` / `task` / `llm`).
 
 ---
 
-## Panel implementation notes
-
-- Same panel template as the other framework cards.
-- If the user already has `wrapt>=2` for other libraries, the installer will
-  downgrade. Surface this in the install output (the panel could show a
-  warning about wrapt downgrade as a "what to expect" note).
-
-## Reference link
-
-Full integration docs:
-[openobserve-docs/docs/integration/ai/frameworks/langchain.md](../../openobserve-docs/docs/integration/ai/frameworks/langchain.md)
-
-**Docs feedback to send back:** the existing doc's `pip install` line is
-missing `langchain-core` and `wrapt<2`. Either:
-
-- Update the doc to: `pip install openobserve-telemetry-sdk opentelemetry-instrumentation-langchain langchain-core 'wrapt<2' python-dotenv`
-- Or document that users running a LangChain app already have these.
+Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/langchain/) or reach out to us on [Slack](https://short.openobserve.ai/community).

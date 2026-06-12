@@ -1,49 +1,33 @@
-# Claude Agent SDK — Data Sources UI panel content
+# Claude Agent SDK
 
-What the OpenObserve **Data Sources → AI → Claude Agent SDK** panel should
-render.
+**AI / SDKs · Python 3.10–3.13** — Trace every agent run — token usage, turn counts, error status.
 
-> **Note**: Claude Agent SDK has no built-in OpenTelemetry instrumentor.
-> Tracing is added by wrapping `query()` calls in manual spans using the
-> standard OTel API. The installer sets up the OpenObserve OTel SDK; the
-> snippet shows the wrapper pattern.
-
----
-
-## Card metadata
-
-| Field | Value |
-|---|---|
-| Display name | Claude Agent SDK |
-| Category | AI / SDKs |
-| Icon | `claude.svg` |
-| Tagline | Trace every agent run — token usage, turn counts, error status |
-| Prerequisites | Python 3.10+, Claude Code CLI on PATH, Anthropic API key |
-
-## Section 1 — Install
+## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/openobserve-telemetry-installers/main/frameworks/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
   --integration=claude-agent-sdk \
   --url={url} \
   --org={org} \
   --token="Basic {token}"
 ```
 
-**What this does:** installs `openobserve-telemetry-sdk`, `claude-agent-sdk`,
-`python-dotenv` via pip; verifies imports; writes `OPENOBSERVE_*` keys to
-`.env`.
+Installs `openobserve-telemetry-sdk`, `claude-agent-sdk`, and `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
 
-Note: the user must have **Claude Code CLI** (`@anthropic-ai/claude-code`)
-installed and on PATH — the SDK runs it as a subprocess. Install via:
+You also need the **Claude Code CLI** on PATH — the SDK runs it as a subprocess:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-## Section 2 — Paste this into your app
+## 2. Add to your app
+
+Put these lines at the top of your entrypoint, **before** importing the SDK:
 
 ```python
+from dotenv import load_dotenv
+load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+
 from openobserve import openobserve_init
 openobserve_init()
 
@@ -68,49 +52,22 @@ async def run_agent(prompt):
                                        message.usage.get("output_tokens", 0))
 ```
 
-> Paste at the top of your app entrypoint. The `with tracer.start_as_current_span(...)`
-> block goes around each `query()` call.
+`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
 
-## Section 3 — Verify
+## 3. Run your app
 
-> Run any `query()` call wrapped in the span.
+Run a query through the Claude Agent SDK — your app already has its `ANTHROPIC_API_KEY` configured.
 
-Open Traces, filter `operation_name = claude_agent.query`. Each query
-produces one span with `claude_agent.num_turns`, `claude_agent.input_tokens`,
-`claude_agent.output_tokens`, `claude_agent.cache_read_input_tokens`,
-`claude_agent.duration_api_ms`, `claude_agent.is_error`.
+```python
+import asyncio
 
-E2E example: a single `query("say ok", options=ClaudeAgentOptions(max_turns=1, allowed_tools=[]))`
-produced 1 span with those attributes.
+asyncio.run(run_agent("In one sentence, what is OpenObserve?"))
+```
 
-## Section 4 — Important gotchas
+## 4. Check OpenObserve
 
-| Gotcha | Mitigation |
-|---|---|
-| **`permission_mode="bypassPermissions"` fails as root** | Claude CLI refuses `--dangerously-skip-permissions` when running as root. In CI/docker, run as non-root OR don't set bypassPermissions. For simple prompts with no tool calls, `allowed_tools=[]` is enough |
-| **Claude Code CLI must be on PATH** | The SDK shells out — install it globally with npm before running your Python app |
-| **No auto-instrumentor** | Spans are user-created. Other Claude integrations (Anthropic SDK direct) have auto-instrumentors; this one doesn't |
-
-## Section 5 — Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `CLINotFoundError` | Install `@anthropic-ai/claude-code` globally |
-| `Command failed with exit code 1` with no detail | Pass `stderr=print` in `ClaudeAgentOptions` to surface claude's error |
-| `--dangerously-skip-permissions cannot be used with root/sudo` | Don't use `bypassPermissions` mode in root containers |
-| No spans appear | You forgot to wrap `query()` in `tracer.start_as_current_span()` |
+Open **Traces** and filter `operation_name=claude_agent.query`. You'll see a span per query with the agent's turns/tool calls.
 
 ---
 
-## Panel implementation notes
-
-- Different shape from auto-instrumented framework cards — this one requires
-  user code change for span wrapping. Make sure the snippet is full enough
-  to be copy-paste-ready.
-- The Claude Code CLI prerequisite is the most common failure — the panel
-  should detect or at least prominently note it.
-
-## Reference
-
-Full integration docs:
-[openobserve-docs/docs/integration/ai/frameworks/claude-agent-sdk.md](../../openobserve-docs/docs/integration/ai/frameworks/claude-agent-sdk.md)
+Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/claude-agent-sdk/) or reach out to us on [Slack](https://short.openobserve.ai/community).
