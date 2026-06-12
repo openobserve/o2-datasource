@@ -10,6 +10,7 @@
 #       --integration=openai \
 #       --url=https://api.openobserve.ai \
 #       --org=default \
+#       --traces-stream=ai_traces \
 #       --token="Basic <base64>"
 
 set -euo pipefail
@@ -60,6 +61,8 @@ INTEGRATION=""
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_TRACES_STREAM=""
+O2_LOGS_STREAM=""
 ENV_FILE="./.env"
 DRY_RUN=0
 
@@ -80,6 +83,8 @@ Required:
     --token=TOKEN         Auth token in the form "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --traces-stream=NAME  OpenObserve stream name for traces (SDK default: default)
+    --logs-stream=NAME    OpenObserve stream name for logs (SDK default: default)
     --env-file=PATH       Path to .env to write/merge (default: ./.env)
     --quiet               Suppress info logs; errors and warnings still print
     --dry-run             Validate config + print plan, don't install
@@ -89,6 +94,7 @@ Examples:
     $0 --integration=openai \\
        --url=https://api.openobserve.ai \\
        --org=default \\
+       --traces-stream=ai_traces \\
        --token="Basic \$(echo -n 'me@example.com:pass' | base64)"
 
     # Local testing against this checkout:
@@ -103,6 +109,8 @@ for arg in "$@"; do
         --url=*)         O2_URL="${arg#*=}" ;;
         --org=*)         O2_ORG="${arg#*=}" ;;
         --token=*)       O2_TOKEN="${arg#*=}" ;;
+        --traces-stream=*) O2_TRACES_STREAM="${arg#*=}" ;;
+        --logs-stream=*) O2_LOGS_STREAM="${arg#*=}" ;;
         --env-file=*)    ENV_FILE="${arg#*=}" ;;
         --quiet)         O2_QUIET=1 ;;
         --dry-run)       DRY_RUN=1 ;;
@@ -182,6 +190,8 @@ fi
 print_info "Integration: $INTEGRATION"
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
+[ -n "$O2_TRACES_STREAM" ] && print_info "Traces stream: $O2_TRACES_STREAM"
+[ -n "$O2_LOGS_STREAM" ] && print_info "Logs stream: $O2_LOGS_STREAM"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Env file: $ENV_FILE"
 print_info "Packages: $INTEG_PACKAGES"
@@ -214,6 +224,8 @@ env_kvs=(
     "OPENOBSERVE_ORG=$O2_ORG"
     "OPENOBSERVE_AUTH_TOKEN=$O2_TOKEN"
 )
+[ -n "$O2_TRACES_STREAM" ] && env_kvs+=("OPENOBSERVE_TRACES_STREAM_NAME=$O2_TRACES_STREAM")
+[ -n "$O2_LOGS_STREAM" ] && env_kvs+=("OPENOBSERVE_LOGS_STREAM_NAME=$O2_LOGS_STREAM")
 # Append integration-specific extra env vars (one per line).
 if [ -n "$INTEG_EXTRA_ENV" ]; then
     while IFS= read -r line; do
