@@ -41,6 +41,7 @@ source "$COMMON_SH"
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_LOGS_STREAM=""
 SCOPE="global"
 DRY_RUN=0
 
@@ -57,6 +58,7 @@ Required:
     --token=TOKEN         Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --logs-stream=NAME    OpenObserve stream name for Codex logs (default: default)
     --scope=SCOPE         "global" (~/.codex/config.toml) — only supported value
     --dry-run             Validate config, no changes
     --quiet               Suppress info logs
@@ -69,6 +71,7 @@ for arg in "$@"; do
         --url=*)     O2_URL="${arg#*=}" ;;
         --org=*)     O2_ORG="${arg#*=}" ;;
         --token=*)   O2_TOKEN="${arg#*=}" ;;
+        --logs-stream=*) O2_LOGS_STREAM="${arg#*=}" ;;
         --scope=*)   SCOPE="${arg#*=}" ;;
         --quiet)     O2_QUIET=1 ;;
         --dry-run)   DRY_RUN=1 ;;
@@ -119,6 +122,7 @@ OTLP_ENDPOINT="$O2_URL/api/$O2_ORG/v1/logs"
 
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
+[ -n "$O2_LOGS_STREAM" ] && print_info "Logs stream: $O2_LOGS_STREAM"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Config file: $CONFIG_FILE"
 print_info "OTLP endpoint: $OTLP_ENDPOINT"
@@ -147,6 +151,7 @@ O2_CONFIG="$CONFIG_FILE" \
 O2_ENDPOINT="$OTLP_ENDPOINT" \
 O2_TOKEN_VAL="$O2_TOKEN" \
 O2_ORG_VAL="$O2_ORG" \
+O2_LOGS_STREAM_VAL="${O2_LOGS_STREAM:-default}" \
 "$PY" - <<'PY'
 import os, pathlib, tempfile
 
@@ -154,6 +159,7 @@ path = pathlib.Path(os.environ["O2_CONFIG"])
 endpoint = os.environ["O2_ENDPOINT"]
 token = os.environ["O2_TOKEN_VAL"]
 org = os.environ["O2_ORG_VAL"]
+logs_stream = os.environ["O2_LOGS_STREAM_VAL"]
 
 START = "# >>> openobserve-otel >>>"
 END   = "# <<< openobserve-otel <<<"
@@ -169,7 +175,7 @@ def toml_escape(s: str) -> str:
 headers_inline = ", ".join([
     f'Authorization = "{toml_escape(token)}"',
     f'organization = "{toml_escape(org)}"',
-    'stream-name = "default"',
+    f'stream-name = "{toml_escape(logs_stream)}"',
 ])
 
 block_lines = [

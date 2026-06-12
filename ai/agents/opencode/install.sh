@@ -45,6 +45,7 @@ source "$COMMON_SH"
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_TRACES_STREAM=""
 SCOPE="global"
 PLUGIN_PACKAGE="$PLUGIN_PACKAGE_DEFAULT"
 PLUGIN_VERSION="$PLUGIN_VERSION_DEFAULT"
@@ -64,6 +65,7 @@ Required:
     --token=TOKEN          Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --traces-stream=NAME   OpenObserve stream name for traces (default: OpenObserve default)
     --scope=SCOPE          "global" (~/.config/opencode/) or
                            "project" (./.opencode/) — default: global
                            Note: plugin is always installed globally via npm;
@@ -82,6 +84,7 @@ for arg in "$@"; do
         --url=*)               O2_URL="${arg#*=}" ;;
         --org=*)               O2_ORG="${arg#*=}" ;;
         --token=*)             O2_TOKEN="${arg#*=}" ;;
+        --traces-stream=*)     O2_TRACES_STREAM="${arg#*=}" ;;
         --scope=*)             SCOPE="${arg#*=}" ;;
         --plugin-package=*)    PLUGIN_PACKAGE="${arg#*=}" ;;
         --plugin-version=*)    PLUGIN_VERSION="${arg#*=}" ;;
@@ -130,9 +133,12 @@ fi
 
 # Standard OTel base endpoint — DEVtheOPS plugin appends /v1/{signal}.
 OTLP_ENDPOINT="$O2_URL/api/$O2_ORG"
+OTLP_HEADERS="Authorization=$O2_TOKEN"
+[ -n "$O2_TRACES_STREAM" ] && OTLP_HEADERS="$OTLP_HEADERS,stream-name=$O2_TRACES_STREAM"
 
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
+[ -n "$O2_TRACES_STREAM" ] && print_info "Traces stream: $O2_TRACES_STREAM"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Scope: $SCOPE"
 print_info "Plugin package: $PLUGIN_PACKAGE@$PLUGIN_VERSION"
@@ -240,7 +246,7 @@ cat >"$ENV_FILE" <<EOF
 #   source $ENV_FILE && opencode
 export OTEL_EXPORTER_OTLP_ENDPOINT="$OTLP_ENDPOINT"
 export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
-export OTEL_EXPORTER_OTLP_HEADERS="Authorization=$O2_TOKEN"
+export OTEL_EXPORTER_OTLP_HEADERS="$OTLP_HEADERS"
 export OTEL_SERVICE_NAME="opencode"
 EOF
 RESOURCES_CREATED+=("env: $ENV_FILE")

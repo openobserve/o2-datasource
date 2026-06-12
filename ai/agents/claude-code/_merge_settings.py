@@ -10,12 +10,13 @@ Reads config from stdin — one value per line, in this order:
     3. OPENOBSERVE_URL value
     4. OPENOBSERVE_ORG value
     5. OPENOBSERVE_AUTH_TOKEN value
+    6. OPENOBSERVE_TRACES_STREAM_NAME value (optional)
 
 Stdin is used (rather than env vars or argv) so the auth token never appears
 in `ps` output or any subprocess environment block.
 
 Behavior:
-  - Existing env block: only the four managed keys are added/updated. All
+  - Existing env block: only the managed keys are added/updated. All
     other keys preserved.
   - Existing hooks.Stop block: if any entry's command ends with
     `openobserve_hooks.py`, its `command` is updated in place (so a Python
@@ -41,6 +42,7 @@ def main() -> int:
         url = sys.stdin.readline().rstrip("\n")
         org = sys.stdin.readline().rstrip("\n")
         token = sys.stdin.readline().rstrip("\n")
+        traces_stream = sys.stdin.readline().rstrip("\n")
     except Exception as e:
         print(f"Failed to read config from stdin: {e}", file=sys.stderr)
         return 2
@@ -55,6 +57,8 @@ def main() -> int:
         "OPENOBSERVE_ORG": org,
         "OPENOBSERVE_AUTH_TOKEN": token,
     }
+    if traces_stream:
+        managed_env["OPENOBSERVE_TRACES_STREAM_NAME"] = traces_stream
 
     settings = {}
     if path.exists() and path.stat().st_size > 0:
