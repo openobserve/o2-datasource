@@ -9,6 +9,7 @@
 #     bash -s -- \
 #       --url=https://api.openobserve.ai \
 #       --org=default \
+#       --traces-stream=claude_code_traces \
 #       --token="Basic <base64>" \
 #       --scope=global
 
@@ -69,6 +70,7 @@ fi
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_TRACES_STREAM=""
 SCOPE="global"
 DRY_RUN=0
 
@@ -86,6 +88,7 @@ Required:
     --token=TOKEN         Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --traces-stream=NAME  OpenObserve stream name for traces (SDK default: default)
     --scope=SCOPE         "global" (~/.claude/settings.json) or
                           "project" (./.claude/settings.local.json)
                           Default: global
@@ -96,6 +99,7 @@ Optional:
 Examples:
     $0 --url=https://api.openobserve.ai \\
        --org=default \\
+       --traces-stream=claude_code_traces \\
        --token="Basic \$(echo -n 'me@example.com:pass' | base64)"
 EOF
 }
@@ -106,6 +110,7 @@ for arg in "$@"; do
         --url=*)     O2_URL="${arg#*=}" ;;
         --org=*)     O2_ORG="${arg#*=}" ;;
         --token=*)   O2_TOKEN="${arg#*=}" ;;
+        --traces-stream=*) O2_TRACES_STREAM="${arg#*=}" ;;
         --scope=*)   SCOPE="${arg#*=}" ;;
         --quiet)     O2_QUIET=1 ;;
         --dry-run)   DRY_RUN=1 ;;
@@ -182,6 +187,7 @@ LOG_FILE="$STATE_DIR/openobserve_hook.log"
 # ── Summary ──────────────────────────────────────────────────────────────────
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
+[ -n "$O2_TRACES_STREAM" ] && print_info "Traces stream: $O2_TRACES_STREAM"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Scope: $SCOPE"
 print_info "Settings file: $SETTINGS_FILE"
@@ -243,6 +249,7 @@ if ! printf '%s\n' \
         "$O2_URL" \
         "$O2_ORG" \
         "$O2_TOKEN" \
+        "$O2_TRACES_STREAM" \
     | "$PY" "$MERGE_SRC"; then
     print_error "Settings merge failed."
     exit 1

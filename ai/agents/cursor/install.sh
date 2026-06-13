@@ -46,6 +46,7 @@ source "$COMMON_SH"
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_TRACES_STREAM=""
 DRY_RUN=0
 SKIP_BOOTSTRAP=0
 
@@ -62,6 +63,7 @@ Required:
     --token=TOKEN         Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --traces-stream=NAME  OpenObserve stream name for traces (default: OpenObserve default)
     --skip-bootstrap      Skip the upstream cursor-otel-hook setup
                           (use when the binary + Cursor hook events are
                           already registered)
@@ -84,6 +86,7 @@ for arg in "$@"; do
         --url=*)             O2_URL="${arg#*=}" ;;
         --org=*)             O2_ORG="${arg#*=}" ;;
         --token=*)           O2_TOKEN="${arg#*=}" ;;
+        --traces-stream=*)   O2_TRACES_STREAM="${arg#*=}" ;;
         --skip-bootstrap)    SKIP_BOOTSTRAP=1 ;;
         --upstream-repo=*)   UPSTREAM_REPO="${arg#*=}" ;;
         --upstream-ref=*)    UPSTREAM_REF="${arg#*=}" ;;
@@ -118,6 +121,7 @@ TRACES_ENDPOINT="$O2_URL/api/$O2_ORG/v1/traces"
 
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
+[ -n "$O2_TRACES_STREAM" ] && print_info "Traces stream: $O2_TRACES_STREAM"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Cursor hooks dir: $HOOKS_DIR"
 print_info "OTel config: $OTEL_CONFIG"
@@ -181,11 +185,13 @@ fi
 O2_OTEL_CFG="$OTEL_CONFIG" \
 O2_ENDPOINT="$TRACES_ENDPOINT" \
 O2_TOKEN_VAL="$O2_TOKEN" \
+O2_TRACES_STREAM_VAL="$O2_TRACES_STREAM" \
 "$PY" - <<'PY'
 import json, os, pathlib, tempfile
 path = pathlib.Path(os.environ["O2_OTEL_CFG"])
 endpoint = os.environ["O2_ENDPOINT"]
 token = os.environ["O2_TOKEN_VAL"]
+traces_stream = os.environ["O2_TRACES_STREAM_VAL"]
 
 cfg = {}
 if path.exists() and path.stat().st_size > 0:
@@ -195,6 +201,10 @@ if path.exists() and path.stat().st_size > 0:
         cfg = {}
     if not isinstance(cfg, dict):
         cfg = {}
+
+headers = f"Authorization={token}"
+if traces_stream:
+    headers += f",stream-name={traces_stream}"
 
 # Managed keys — overwrite. Non-managed keys (e.g. CURSOR_OTEL_MASK_PROMPTS)
 # are preserved.
@@ -206,7 +216,7 @@ managed = {
     "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
     "OTEL_EXPORTER_OTLP_INSECURE": "false",
     "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
-    "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token}",
+    "OTEL_EXPORTER_OTLP_HEADERS": headers,
     "OTEL_SERVICE_NAME": "cursor",
 }
 for k, v in managed.items():
