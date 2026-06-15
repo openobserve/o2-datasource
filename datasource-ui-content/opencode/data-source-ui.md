@@ -1,30 +1,63 @@
-# OpenCode
+---
+# Rich, stepped setup card for the OpenObserve Data Sources panel.
+# The frontmatter below IS the card (provider + steps + live detection). Adding a
+# `card:` + `detect:` block is what turns this integration into the rich card.
+card:
+  name: OpenCode
+  tagline: "Trace every OpenCode session: agent steps, tool calls, file ops."
+  runtime: CLI agent
+  setup_time: ~2 min
+  tone: "#6b7280"
 
-**AI / Agents · CLI agent** — Trace every OpenCode session: agent steps, tool calls, file ops.
+# Live detection — "listening for the first span". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). `stream` MUST match the
+# stream the install command writes to (the SDK default "default").
+detect:
+  stream_type: traces
+  stream: default
+  # best-effort; confirm on ingest
+  filter: "service_name = 'opencode'"
 
-## 1. Install
+doc_url: https://openobserve.ai/docs/
+slack_url: https://short.openobserve.ai/community
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/opencode/install.sh | bash -s -- \
-  --url={url} \
-  --org={org} \
-  --token="Basic {token}"
-```
+steps:
+  - title: Run The Installer
+    description: "One command installs the OpenCode OTel telemetry plugin and writes its config. Safe to re-run."
+    chip: { kind: terminal, label: Terminal }
+    complete_on: copy
+    code:
+      lang: bash
+      text: |
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/opencode/install.sh | bash -s -- \
+          --url={url} \
+          --org={org} \
+          --token="Basic {token}"
 
-Installs the OpenCode OTel telemetry plugin and writes its config (registers the plugin and the `OTEL_EXPORTER_OTLP_*` env file).
+  - title: Use OpenCode
+    description: "Run any OpenCode command, e.g.:"
+    chip: { kind: run, label: Run }
+    complete_on: detect
+    detection_anchor: true
+    code:
+      lang: bash
+      text: |
+        opencode run "say hi"
 
-## 2. Use OpenCode
+  - title: Check OpenObserve
+    description: "Open **Traces** and filter `service_name = opencode`. You'll see a span per OpenCode run."
+    chip: { kind: traces, label: Traces }
+    complete_on: detect
 
-Run any OpenCode command, e.g.:
-
-```bash
-opencode run "say hi"
-```
-
-## 3. Check OpenObserve
-
-Open **Traces** and filter `service_name=opencode`. You'll see a span per OpenCode run.
-
+extras:
+  installs:
+    - opencode-otel-telemetry-plugin
+  env_vars:
+    - OTEL_EXPORTER_OTLP_ENDPOINT
+    - OTEL_EXPORTER_OTLP_HEADERS
 ---
 
-Run into issues? See the [docs](https://openobserve.ai/docs/) or reach out to us on [Slack](https://short.openobserve.ai/community).
+# OpenCode
+
+Trace every OpenCode session: agent steps, tool calls, file ops. The OpenObserve
+Data Sources panel renders the stepped setup card from the frontmatter above.

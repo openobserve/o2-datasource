@@ -1,53 +1,95 @@
-# OpenAI Agents SDK
+---
+# Rich, stepped setup card for the OpenObserve Data Sources panel.
+# The frontmatter below IS the card (provider + steps + live detection). Adding a
+# `card:` + `detect:` block is what turns this integration into the rich card.
+card:
+  name: OpenAI Agents SDK
+  tagline: Trace every agent workflow, handoff, and LLM call.
+  runtime: Python 3.10–3.13
+  setup_time: ~2 min
+  tone: "#10a37f"
 
-**AI / Frameworks · Python 3.10–3.13** — trace every agent workflow, handoff, and LLM call.
+# Live detection — "listening for the first span". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). `stream` MUST match the
+# stream the install command writes to (today the SDK default "default").
+detect:
+  stream_type: traces
+  stream: default
+  # best-effort; confirm on ingest
+  filter: "span_name = 'Agent workflow'"
 
-## 1. Install
+doc_url: https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/
+slack_url: https://short.openobserve.ai/community
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
-  --integration=openai-agents \
-  --url={url} \
-  --org={org} \
-  --token="Basic {token}"
-```
+steps:
+  - title: Run The Installer
+    description: "One command installs the SDK + OpenAI Agents instrumentor and writes your `.env`. Safe to re-run."
+    chip: { kind: terminal, label: Terminal }
+    complete_on: copy
+    code:
+      lang: bash
+      download_env: true
+      text: |
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
+          --integration=openai-agents \
+          --url={url} \
+          --org={org} \
+          --token="Basic {token}"
 
-Installs `openobserve-telemetry-sdk`, `openinference-instrumentation-openai-agents`, `openai-agents`, and `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
+  - title: Add These Lines To Your App
+    description: "Required — the installer sets up packages, but spans only flow once your app is instrumented. Paste at the top of your entrypoint, **before** importing the Agents SDK."
+    chip: { kind: editor, label: main.py }
+    required: true
+    complete_on: copy
+    note: "load_dotenv() is required — openobserve_init() reads its settings from environment variables, not from .env directly."
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from dotenv import load_dotenv
+        load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
 
-## 2. Add to your app
+        from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+        from openobserve import openobserve_init
 
-Put these lines at the top of your entrypoint, **before** importing the Agents SDK:
+        OpenAIAgentsInstrumentor().instrument()
+        openobserve_init()
 
-```python
-from dotenv import load_dotenv
-load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+  - title: Run Your App
+    description: "Define an agent and run it — your app already has `OPENAI_API_KEY` configured, and every call is traced automatically:"
+    chip: { kind: run, label: Run }
+    complete_on: detect
+    detection_anchor: true
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from agents import Agent, Runner
 
-from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
-from openobserve import openobserve_init
+        agent = Agent(name="Assistant", instructions="You are a helpful assistant.")
 
-OpenAIAgentsInstrumentor().instrument()
-openobserve_init()
-```
+        result = Runner.run_sync(agent, "hi")
+        print(result.final_output)
 
-`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
+  - title: Check OpenObserve
+    description: "Open **Traces** and filter for spans named `Agent workflow`. You'll see the agent run — model calls, tool calls, handoffs — as a span tree."
+    chip: { kind: traces, label: Traces }
+    complete_on: detect
 
-## 3. Run a workflow
-
-Your app already has `OPENAI_API_KEY` configured. Define an agent and run it — every call is traced automatically:
-
-```python
-from agents import Agent, Runner
-
-agent = Agent(name="Assistant", instructions="You are a helpful assistant.")
-
-result = Runner.run_sync(agent, "hi")
-print(result.final_output)
-```
-
-## 4. Check OpenObserve
-
-Open **Traces** and filter for spans named `Agent workflow`. You'll see the agent run — model calls, tool calls, handoffs — as a span tree.
-
+extras:
+  installs:
+    - openobserve-telemetry-sdk
+    - openinference-instrumentation-openai-agents
+    - openai-agents
+    - python-dotenv
+  env_vars:
+    - OPENOBSERVE_URL
+    - OPENOBSERVE_ORG
+    - OPENOBSERVE_AUTH_TOKEN
 ---
 
-Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/) or reach out to us on [Slack](https://short.openobserve.ai/community).
+# OpenAI Agents SDK
+
+Trace every agent workflow, handoff, and LLM call from your Python app. The
+OpenObserve Data Sources panel renders the stepped setup card from the
+frontmatter above.

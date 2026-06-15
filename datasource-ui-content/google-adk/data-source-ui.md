@@ -1,67 +1,113 @@
-# Google ADK
+---
+# Rich, stepped setup card for the OpenObserve Data Sources panel.
+# The frontmatter below IS the card (provider + steps + live detection). Adding a
+# `card:` + `detect:` block is what turns this integration into the rich card.
+card:
+  name: Google ADK
+  tagline: Trace every ADK agent run, LLM call, and tool execution.
+  runtime: Python 3.10–3.13
+  setup_time: ~2 min
+  tone: "#4285f4"
 
-**AI / Frameworks · Python 3.10–3.13** — Trace every ADK agent run, LLM call, and tool execution.
+# Live detection — "listening for the first span". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). `stream` MUST match the
+# stream the install command writes to (today the SDK default "default").
+detect:
+  stream_type: traces
+  stream: default
+  # best-effort; confirm on ingest
+  filter: "name LIKE 'invocation %'"
+  model_label: gemini-2.0-flash
 
-## 1. Install
+doc_url: https://openobserve.ai/docs/integration/ai/frameworks/google-adk/
+slack_url: https://short.openobserve.ai/community
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
-  --integration=google-adk \
-  --url={url} \
-  --org={org} \
-  --token="Basic {token}"
-```
+steps:
+  - title: Run The Installer
+    description: "One command installs the SDK + Google ADK instrumentor and writes your `.env`. Safe to re-run."
+    chip: { kind: terminal, label: Terminal }
+    complete_on: copy
+    code:
+      lang: bash
+      download_env: true
+      text: |
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
+          --integration=google-adk \
+          --url={url} \
+          --org={org} \
+          --token="Basic {token}"
 
-Installs `openobserve-telemetry-sdk`, `openinference-instrumentation-google-adk`, `google-adk`, `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
+  - title: Add These Lines To Your App
+    description: "Required — paste at the top of your entrypoint, **before** importing the ADK. Spans only flow once your app is instrumented."
+    chip: { kind: editor, label: main.py }
+    required: true
+    complete_on: copy
+    note: "load_dotenv() is required — openobserve_init() reads its settings from environment variables, not from .env directly."
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from dotenv import load_dotenv
+        load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
 
-## 2. Add to your app
+        from openinference.instrumentation.google_adk import GoogleADKInstrumentor
+        from openobserve import openobserve_init
 
-Put these lines at the top of your entrypoint, **before** importing the ADK:
+        GoogleADKInstrumentor().instrument()
+        openobserve_init()
 
-```python
-from dotenv import load_dotenv
-load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+  - title: Run Your App
+    description: "Define an agent and run it — your app already has its `GOOGLE_API_KEY` configured:"
+    chip: { kind: run, label: Run }
+    complete_on: detect
+    detection_anchor: true
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from google.adk.agents import Agent
+        from google.adk.runners import InMemoryRunner
+        from google.genai import types
 
-from openinference.instrumentation.google_adk import GoogleADKInstrumentor
-from openobserve import openobserve_init
+        agent = Agent(
+            name="assistant",
+            model="gemini-2.0-flash",
+            instruction="You are a helpful assistant.",
+        )
 
-GoogleADKInstrumentor().instrument()
-openobserve_init()
-```
+        runner = InMemoryRunner(agent=agent, app_name="assistant")
+        session = runner.session_service.create_session(app_name="assistant", user_id="user")
 
-`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
+        for event in runner.run(
+            user_id="user",
+            session_id=session.id,
+            new_message=types.Content(role="user", parts=[types.Part(text="What is OpenObserve?")]),
+        ):
+            if event.is_final_response():
+                print(event.content.parts[0].text)
 
-## 3. Run an agent
+  - title: Check OpenObserve
+    description: "Open **Traces** and filter for spans named `invocation [<app_name>]`. The agent invocation appears as a span tree:"
+    chip: { kind: traces, label: Traces }
+    complete_on: detect
+    pills:
+      - invocation [app_name]
+      - model calls
+      - tool executions
 
-Define an agent and run it. Your app already has `GOOGLE_API_KEY` configured.
-
-```python
-from google.adk.agents import Agent
-from google.adk.runners import InMemoryRunner
-from google.genai import types
-
-agent = Agent(
-    name="assistant",
-    model="gemini-2.0-flash",
-    instruction="You are a helpful assistant.",
-)
-
-runner = InMemoryRunner(agent=agent, app_name="assistant")
-session = runner.session_service.create_session(app_name="assistant", user_id="user")
-
-for event in runner.run(
-    user_id="user",
-    session_id=session.id,
-    new_message=types.Content(role="user", parts=[types.Part(text="What is OpenObserve?")]),
-):
-    if event.is_final_response():
-        print(event.content.parts[0].text)
-```
-
-## 4. Check OpenObserve
-
-Open **Traces** and filter for spans named `invocation [<app_name>]`. You'll see the agent invocation as a span tree (model calls, tools).
-
+extras:
+  installs:
+    - openobserve-telemetry-sdk
+    - openinference-instrumentation-google-adk
+    - google-adk
+    - python-dotenv
+  env_vars:
+    - OPENOBSERVE_URL
+    - OPENOBSERVE_ORG
+    - OPENOBSERVE_AUTH_TOKEN
 ---
 
-Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/google-adk/) or reach out to us on [Slack](https://short.openobserve.ai/community).
+# Google ADK
+
+Trace every ADK agent run, LLM call, and tool execution. The OpenObserve Data
+Sources panel renders the stepped setup card from the frontmatter above.

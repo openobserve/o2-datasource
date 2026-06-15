@@ -1,54 +1,98 @@
-# OpenAI
+---
+# Rich, stepped setup card for the OpenObserve Data Sources panel.
+# The frontmatter below IS the card (provider + steps + live detection). Adding a
+# `card:` + `detect:` block is what turns this integration into the rich card.
+card:
+  name: OpenAI
+  tagline: Trace every OpenAI Python SDK call.
+  runtime: Python 3.10–3.13
+  setup_time: ~2 min
+  tone: "#10a37f"
 
-**AI / Providers · Python 3.10–3.13** — trace every OpenAI Python SDK call.
+# Live detection — "listening for the first span". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). `stream` MUST match the
+# stream the install command writes to (today the SDK default "default").
+detect:
+  stream_type: traces
+  stream: default
+  # best-effort; confirm on ingest
+  filter: "LOWER(gen_ai_system) = 'openai'"
+  model_label: gpt-4o-mini
 
-## 1. Install
+doc_url: https://openobserve.ai/docs/integration/ai/providers/openai/
+slack_url: https://short.openobserve.ai/community
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
-  --integration=openai \
-  --url={url} \
-  --org={org} \
-  --token="Basic {token}"
-```
+steps:
+  - title: Run The Installer
+    description: "One command installs the SDK + OpenAI instrumentor and writes your `.env`. Safe to re-run."
+    chip: { kind: terminal, label: Terminal }
+    complete_on: copy
+    code:
+      lang: bash
+      download_env: true
+      text: |
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
+          --integration=openai \
+          --url={url} \
+          --org={org} \
+          --token="Basic {token}"
 
-Installs `openobserve-telemetry-sdk`, `opentelemetry-instrumentation-openai`,
-`openai`, and `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`,
-and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
+  - title: Add These Lines To Your App
+    description: "Required — paste at the top of your entrypoint, **before** importing the OpenAI client."
+    chip: { kind: editor, label: main.py }
+    required: true
+    complete_on: copy
+    note: "load_dotenv() is required — openobserve_init() reads its settings from environment variables, not from .env directly."
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from dotenv import load_dotenv
+        load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
 
-## 2. Add to your app
+        from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+        from openobserve import openobserve_init
 
-Put these lines at the top of your entrypoint, **before** importing the OpenAI client:
+        OpenAIInstrumentor().instrument()
+        openobserve_init()
 
-```python
-from dotenv import load_dotenv
-load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+  - title: Run Your App
+    description: "Make any OpenAI call — your app already has its `OPENAI_API_KEY` configured:"
+    chip: { kind: run, label: Run }
+    complete_on: detect
+    detection_anchor: true
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "hi"}],
+        )
 
-from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-from openobserve import openobserve_init
+  - title: Check OpenObserve
+    description: "Open **Traces** and filter `gen_ai_system = openai`. Each call appears as a span like `openai.chat` carrying:"
+    chip: { kind: traces, label: Traces }
+    complete_on: detect
+    pills:
+      - gen_ai.request.model
+      - gen_ai.usage.input_tokens
+      - gen_ai.usage.output_tokens
+      - llm.usage.cost_total
 
-OpenAIInstrumentor().instrument()
-openobserve_init()
-```
-
-`load_dotenv()` is required — `openobserve_init()` reads its settings from
-environment variables, not from `.env` directly.
-
-## 3. Run your app
-
-Make any OpenAI call — your app already has its `OPENAI_API_KEY` configured:
-
-```python
-client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "hi"}],
-)
-```
-
-## 4. Check OpenObserve
-
-Open **Traces** and filter `gen_ai_system=openai`. You'll see spans like `openai.chat` with `gen_ai.request.model`, token usage, and cost attributes.
-
+extras:
+  installs:
+    - openobserve-telemetry-sdk
+    - opentelemetry-instrumentation-openai
+    - openai
+    - python-dotenv
+  env_vars:
+    - OPENOBSERVE_URL
+    - OPENOBSERVE_ORG
+    - OPENOBSERVE_AUTH_TOKEN
 ---
 
-Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/providers/openai/) or reach out to us on [Slack](https://short.openobserve.ai/community).
+# OpenAI
+
+Trace every OpenAI Python SDK call. The OpenObserve Data Sources panel renders
+the stepped setup card from the frontmatter above.

@@ -1,49 +1,98 @@
-# LangChain / LangGraph
+---
+# Rich, stepped setup card for the OpenObserve Data Sources panel.
+# The frontmatter below IS the card (provider + steps + live detection). Adding a
+# `card:` + `detect:` block is what turns this integration into the rich card.
+card:
+  name: LangChain / LangGraph
+  tagline: Trace every chain, LLM call, tool invocation, and retrieval step.
+  runtime: Python 3.10–3.13
+  setup_time: ~2 min
+  tone: "#1c8a6f"
 
-**AI / Frameworks · Python 3.10–3.13** — Trace every chain, LLM call, tool invocation, and retrieval step.
+# Live detection — "listening for the first span". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). `stream` MUST match the
+# stream the install command writes to (today the SDK default "default").
+detect:
+  stream_type: traces
+  stream: default
+  # best-effort; confirm on ingest
+  filter: "traceloop_span_kind IS NOT NULL"
+  model_label: gpt-4o-mini
 
-## 1. Install
+doc_url: https://openobserve.ai/docs/integration/ai/frameworks/langchain/
+slack_url: https://short.openobserve.ai/community
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
-  --integration=langchain \
-  --url={url} \
-  --org={org} \
-  --token="Basic {token}"
-```
+steps:
+  - title: Run The Installer
+    description: "One command installs the SDK + LangChain instrumentor and writes your `.env`. Safe to re-run."
+    chip: { kind: terminal, label: Terminal }
+    complete_on: copy
+    code:
+      lang: bash
+      download_env: true
+      text: |
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/frameworks/setup.sh | bash -s -- \
+          --integration=langchain \
+          --url={url} \
+          --org={org} \
+          --token="Basic {token}"
 
-Installs `openobserve-telemetry-sdk`, `opentelemetry-instrumentation>=0.51b0`, `opentelemetry-instrumentation-langchain`, `langchain-core`, `wrapt>=1.16,<2`, `python-dotenv`, then writes `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, and `OPENOBSERVE_AUTH_TOKEN` to `./.env`.
+  - title: Add These Lines To Your App
+    description: "Required — paste at the top of your entrypoint, **before** importing LangChain."
+    chip: { kind: editor, label: main.py }
+    required: true
+    complete_on: copy
+    note: "load_dotenv() is required — openobserve_init() reads its settings from environment variables, not from .env directly."
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from dotenv import load_dotenv
+        load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
 
-## 2. Add to your app
+        from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+        from openobserve import openobserve_init
 
-Put these lines at the top of your entrypoint, **before** importing LangChain:
+        LangchainInstrumentor().instrument()
+        openobserve_init()
 
-```python
-from dotenv import load_dotenv
-load_dotenv()  # loads the OPENOBSERVE_* vars the installer wrote to .env
+  - title: Run Your App
+    description: "Invoke any LangChain/LangGraph chain — your app already has the underlying model's API key configured (e.g. `OPENAI_API_KEY`):"
+    chip: { kind: run, label: Run }
+    complete_on: detect
+    detection_anchor: true
+    code:
+      lang: python
+      filename: main.py
+      text: |
+        from langchain_openai import ChatOpenAI
+        ChatOpenAI(model="gpt-4o-mini").invoke("hi")
 
-from opentelemetry.instrumentation.langchain import LangchainInstrumentor
-from openobserve import openobserve_init
+  - title: Check OpenObserve
+    description: "Open **Traces** and look for the chain's span tree — a top-level `<Chain>.workflow` span (e.g. `RunnableSequence.workflow`) with child spans like `ChatOpenAI.chat`. Filter with the `traceloop_span_kind` attribute:"
+    chip: { kind: traces, label: Traces }
+    complete_on: detect
+    pills:
+      - traceloop_span_kind
+      - workflow
+      - task
+      - llm
 
-LangchainInstrumentor().instrument()
-openobserve_init()
-```
-
-`load_dotenv()` is required — `openobserve_init()` reads its settings from environment variables, not from `.env` directly.
-
-## 3. Run your app
-
-Invoke any LangChain/LangGraph chain — your app already has the underlying model's API key configured (e.g. `OPENAI_API_KEY`):
-
-```python
-from langchain_openai import ChatOpenAI
-ChatOpenAI(model="gpt-4o-mini").invoke("hi")
-```
-
-## 4. Check OpenObserve
-
-Open **Traces** and look for the chain's span tree — a top-level `<Chain>.workflow` span (e.g. `RunnableSequence.workflow`) with child spans like `ChatOpenAI.chat`. To filter, use the `traceloop_span_kind` attribute (`workflow` / `task` / `llm`).
-
+extras:
+  installs:
+    - openobserve-telemetry-sdk
+    - opentelemetry-instrumentation>=0.51b0
+    - opentelemetry-instrumentation-langchain
+    - langchain-core
+    - wrapt>=1.16,<2
+    - python-dotenv
+  env_vars:
+    - OPENOBSERVE_URL
+    - OPENOBSERVE_ORG
+    - OPENOBSERVE_AUTH_TOKEN
 ---
 
-Run into issues? See the [docs](https://openobserve.ai/docs/integration/ai/frameworks/langchain/) or reach out to us on [Slack](https://short.openobserve.ai/community).
+# LangChain / LangGraph
+
+Trace every chain, LLM call, tool invocation, and retrieval step. The OpenObserve
+Data Sources panel renders the stepped setup card from the frontmatter above.
