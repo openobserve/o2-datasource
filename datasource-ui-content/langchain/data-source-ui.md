@@ -16,7 +16,10 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # confirmed: opentelemetry-instrumentation-langchain (v0.61) sets
+  # traceloop.span.kind on WORKFLOW/TASK spans (verified via console exporter).
+  # NOTE: only CHAINS get this attr — a bare ChatOpenAI(...).invoke() does NOT,
+  # so the "Run Your App" step below must invoke an actual chain to trip detection.
   filter: "traceloop_span_kind IS NOT NULL"
   model_label: gpt-4o-mini
 
@@ -69,7 +72,7 @@ steps:
         openobserve_init()
 
   - title: Run Your App
-    description: "Invoke any LangChain/LangGraph chain — your app already has the underlying model's API key configured (e.g. `OPENAI_API_KEY`):"
+    description: "Invoke an actual LangChain/LangGraph **chain** (not a bare model call — only chains emit the `traceloop_span_kind` span the card detects on). Your app already has the underlying model's API key configured (e.g. `OPENAI_API_KEY`):"
     chip: { kind: run, label: Run }
     complete_on: detect
     detection_anchor: true
@@ -78,7 +81,10 @@ steps:
       filename: main.py
       text: |
         from langchain_openai import ChatOpenAI
-        ChatOpenAI(model="gpt-4o-mini").invoke("hi")
+        from langchain_core.prompts import ChatPromptTemplate
+
+        chain = ChatPromptTemplate.from_template("say {x}") | ChatOpenAI(model="gpt-4o-mini")
+        chain.invoke({"x": "hi"})
 
   - title: Check OpenObserve
     description: "Open **Traces** and look for the chain's span tree — a top-level `<Chain>.workflow` span (e.g. `RunnableSequence.workflow`) with child spans like `ChatOpenAI.chat`. Filter with the `traceloop_span_kind` attribute:"

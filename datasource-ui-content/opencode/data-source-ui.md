@@ -16,7 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # reliable by construction: install.sh sets OTEL_SERVICE_NAME="opencode", and
+  # OpenObserve maps OTEL service name → service_name (confirmed via
+  # codex/claude-code real ingest).
   filter: "service_name = 'opencode'"
 
 doc_url: https://openobserve.ai/docs/

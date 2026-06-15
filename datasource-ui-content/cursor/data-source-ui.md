@@ -16,7 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # reliable by construction: install.sh writes OTEL_SERVICE_NAME=cursor into the
+  # hook config, and OpenObserve maps OTEL service name → service_name (confirmed
+  # via codex/claude-code real ingest).
   filter: "service_name = 'cursor'"
 
 doc_url: https://openobserve.ai/docs/

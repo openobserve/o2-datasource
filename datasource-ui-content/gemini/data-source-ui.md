@@ -16,7 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # confirmed: opentelemetry-instrumentation-google-generativeai (v0.61) emits a
+  # real span with gen_ai.provider.name = "gcp.gen_ai" (verified via console
+  # exporter on a live call); OpenObserve flattens it to gen_ai_provider_name.
   filter: "gen_ai_provider_name = 'gcp.gen_ai'"
   model_label: gemini-2.0-flash
 

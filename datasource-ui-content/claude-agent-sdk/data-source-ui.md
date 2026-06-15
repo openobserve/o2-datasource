@@ -16,7 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # reliable by construction: the span name is set manually in this card's own
+  # snippet (start_as_current_span("claude_agent.query")), and OpenObserve maps
+  # span name → operation_name (confirmed via crewai/google-adk/openai-agents).
   filter: "operation_name = 'claude_agent.query'"
 
 doc_url: https://openobserve.ai/docs/integration/ai/frameworks/claude-agent-sdk/
