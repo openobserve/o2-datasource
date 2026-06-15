@@ -15,8 +15,9 @@ card:
 detect:
   stream_type: logs
   stream: default
-  # best-effort; confirm on ingest
-  filter: "service_name = 'codex_exec'"
+  # best-effort; confirm on ingest. service_name differs by mode:
+  # `codex_exec` (exec mode) vs `codex_cli_rs` (interactive TUI), so match both.
+  filter: "service_name IN ('codex_exec', 'codex_cli_rs')"
 
 doc_url: https://openobserve.ai/docs/
 slack_url: https://short.openobserve.ai/community
@@ -56,7 +57,7 @@ steps:
         codex exec "say hi"
 
   - title: Check OpenObserve
-    description: "Open **Logs** and filter `service_name = codex_exec`. You'll see a log record per session."
+    description: "Open **Logs** and filter `service_name = codex_exec` (or `codex_cli_rs` in interactive mode). You'll see a log record per session."
     chip: { kind: logs, label: Logs }
     complete_on: detect
     pills:
@@ -72,7 +73,7 @@ fix_snippet: |
   # then run a Codex command and open the LOGS view (not Traces)
 troubleshooting:
   - q: "Nothing shows in Traces"
-    a: "Codex emits logs, not traces. Open the Logs view and filter `service_name = codex_exec`."
+    a: "Codex emits logs, not traces. Open the Logs view and filter `service_name = codex_exec` (or `codex_cli_rs` if you're using interactive mode)."
   - q: "The config block is missing"
     a: "Re-run the installer (idempotent) — it writes `[otel.exporter.otlp-http]` into `~/.codex/config.toml`."
   - q: "Auth errors in the OpenObserve logs"

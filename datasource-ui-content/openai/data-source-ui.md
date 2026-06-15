@@ -16,8 +16,8 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
-  filter: "LOWER(gen_ai_system) = 'openai'"
+  # confirmed: opentelemetry-instrumentation-openai sets gen_ai.provider.name (new GenAI semconv)
+  filter: "gen_ai_provider_name = 'openai'"
   model_label: gpt-4o-mini
 
 doc_url: https://openobserve.ai/docs/integration/ai/providers/openai/
@@ -83,7 +83,7 @@ steps:
         )
 
   - title: Check OpenObserve
-    description: "Open **Traces** and filter `gen_ai_system = openai`. Each call appears as a span like `openai.chat` carrying:"
+    description: "Open **Traces** and filter `gen_ai_provider_name = openai`. Each call appears as a span like `openai.chat` carrying:"
     chip: { kind: traces, label: Traces }
     complete_on: detect
     pills:

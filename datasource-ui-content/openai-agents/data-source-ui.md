@@ -16,8 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
-  filter: "span_name = 'Agent workflow'"
+  # confirmed: OpenObserve stores the span name in `operation_name` (not `span_name`);
+  # openinference-instrumentation-openai-agents uses the SDK trace name "Agent workflow"
+  filter: "operation_name = 'Agent workflow'"
 
 doc_url: https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/
 slack_url: https://short.openobserve.ai/community
@@ -112,7 +113,7 @@ troubleshooting:
   - q: "Agent runs but no spans appear"
     a: "Move the init lines above any `from agents import …`."
   - q: "Spans appear but the filter matches nothing"
-    a: "Top-level runs are named `Agent workflow`; filter with `span_name = 'Agent workflow'`."
+    a: "Top-level runs are named `Agent workflow`; filter with `operation_name = 'Agent workflow'`."
   - q: "pip complains about an externally-managed environment"
     a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
   - q: "Auth errors in the OpenObserve logs"

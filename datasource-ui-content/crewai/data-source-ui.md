@@ -16,8 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
-  filter: "name LIKE 'Crew_%.kickoff'"
+  # confirmed: OpenObserve stores the span name in `operation_name` (not `name`);
+  # openinference-instrumentation-crewai names the crew span "Crew_<id>.kickoff"
+  filter: "operation_name LIKE 'Crew_%.kickoff'"
 
 doc_url: https://openobserve.ai/docs/integration/ai/frameworks/crewai/
 slack_url: https://short.openobserve.ai/community

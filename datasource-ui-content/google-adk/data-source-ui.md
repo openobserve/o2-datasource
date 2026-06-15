@@ -16,8 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
-  filter: "name LIKE 'invocation %'"
+  # confirmed: OpenObserve stores the span name in `operation_name` (not `name`);
+  # openinference-instrumentation-google-adk names spans "invocation [<app_name>]"
+  filter: "operation_name LIKE 'invocation %'"
   model_label: gemini-2.0-flash
 
 doc_url: https://openobserve.ai/docs/integration/ai/frameworks/google-adk/
@@ -131,7 +132,7 @@ troubleshooting:
   - q: "Agent runs but no spans appear"
     a: "Move the init lines above any `from google.adk… import …`."
   - q: "Spans appear but the filter matches nothing"
-    a: "ADK invocation spans are named `invocation …`; filter with `name LIKE 'invocation %'`."
+    a: "ADK invocation spans are named `invocation …`; filter with `operation_name LIKE 'invocation %'`."
   - q: "pip complains about an externally-managed environment"
     a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
   - q: "Auth errors in the OpenObserve logs"

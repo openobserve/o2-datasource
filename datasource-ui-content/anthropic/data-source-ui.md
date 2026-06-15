@@ -17,7 +17,8 @@ card:
 detect:
   stream_type: traces
   stream: default
-  filter: "LOWER(gen_ai_system) = 'anthropic'"
+  # confirmed: opentelemetry-instrumentation-anthropic sets gen_ai.provider.name = 'anthropic'
+  filter: "gen_ai_provider_name = 'anthropic'"
   model_label: claude-haiku-4-5
 
 doc_url: https://openobserve.ai/docs/integration/ai/providers/anthropic/
@@ -84,7 +85,7 @@ steps:
         )
 
   - title: Check OpenObserve
-    description: "Open **Traces** and filter `gen_ai_system = Anthropic`. Each call appears as a span carrying:"
+    description: "Open **Traces** and filter `gen_ai_provider_name = anthropic`. Each call appears as a span carrying:"
     chip: { kind: traces, label: Traces }
     complete_on: detect
     pills:
