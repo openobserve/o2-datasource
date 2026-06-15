@@ -16,7 +16,11 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # attribute confirmed at source: openinference-instrumentation-openai sets
+  # llm.model_name from response.model verbatim (→ OpenObserve llm_model_name).
+  # VALUE PENDING: the '/' depends on OpenRouter echoing the namespaced model id
+  # (e.g. openai/gpt-4o-mini) in response.model — couldn't verify with a dummy key
+  # (a 401 returns no response). TODO(detect): confirm live with an OpenRouter key.
   filter: "llm_model_name LIKE '%/%'"
   model_label: openai/gpt-4o-mini
 

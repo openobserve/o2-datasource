@@ -16,7 +16,9 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # confirmed: openinference-instrumentation-litellm names the span "completion"
+  # (verified via console exporter on a live call); OpenObserve maps span name →
+  # operation_name. Emits even on auth error, so detection is robust.
   filter: "operation_name = 'completion'"
   model_label: gpt-4o-mini
 
