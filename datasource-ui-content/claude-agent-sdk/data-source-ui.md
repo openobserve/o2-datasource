@@ -117,6 +117,31 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Init Before Wrapping query() In A Span"
+fix_body: "This integration records manual spans. If nothing appears, make sure openobserve_init() runs before your traced code and that each query() call is wrapped in a span:"
+fix_snippet: |
+  # init FIRST
+  from openobserve import openobserve_init
+  openobserve_init()
+
+  # then wrap each query() call in a span
+  from opentelemetry import trace
+  tracer = trace.get_tracer(__name__)
+  with tracer.start_as_current_span("claude_agent.query"):
+      async for message in query(prompt=prompt, options=options):
+          ...
+troubleshooting:
+  - q: "Agent runs but no spans appear"
+    a: "Ensure `openobserve_init()` runs before the traced code, and that `query()` is called inside `tracer.start_as_current_span(...)`."
+  - q: "Spans appear but the filter matches nothing"
+    a: "Manual spans use `operation_name = claude_agent.query` (the span name in the snippet). Adjust the filter if you renamed it."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # Claude Agent SDK

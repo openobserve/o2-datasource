@@ -63,6 +63,24 @@ steps:
       - tool calls
       - model usage
 
+
+fix_title: "Re-run The Installer And Restart Claude Code"
+fix_body: "Traces come from a Stop hook in settings.json. If turns aren't traced, confirm the hook is registered, then start a fresh session:"
+fix_lang: bash
+fix_snippet: |
+  # confirm the Stop hook + OpenObserve env are present
+  cat ~/.claude/settings.json | grep -A3 openobserve_hooks
+
+  # if missing, re-run the installer (safe to re-run), then start a new session
+troubleshooting:
+  - q: "Turns run but no traces appear"
+    a: "Start a fresh Claude Code session after installing — the Stop hook is read at session start."
+  - q: "The hook isn't in settings.json"
+    a: "Re-run the installer (idempotent). Use `--scope=project` to write to the project's `.claude/settings.local.json` instead."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # Claude Code

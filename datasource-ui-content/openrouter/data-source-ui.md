@@ -117,6 +117,29 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Instrument Before Importing The OpenAI Client"
+fix_body: "OpenRouter uses the OpenAI SDK. If a call runs but no spans appear, instrument before importing the client:"
+fix_snippet: |
+  # instrument FIRST — before the client is imported
+  OpenAIInstrumentor().instrument()
+  openobserve_init()
+
+  # only then import and point the client at OpenRouter
+  from openai import OpenAI
+  client = OpenAI(
+      api_key=os.environ["OPENROUTER_API_KEY"],
+      base_url="https://openrouter.ai/api/v1",
+  )
+troubleshooting:
+  - q: "Calls run but no spans appear"
+    a: "Move the init lines above `from openai import OpenAI`."
+  - q: "Spans appear but the filter matches nothing"
+    a: "OpenRouter model names look like `vendor/model`; filter with `llm_model_name LIKE '%/%'`."
+  - q: "Auth errors"
+    a: "Use your OpenRouter key in `OPENROUTER_API_KEY`, and the OpenObserve token as `Basic <base64>`."
+
+
 ---
 
 # OpenRouter

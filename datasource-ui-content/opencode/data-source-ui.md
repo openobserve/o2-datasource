@@ -67,6 +67,23 @@ extras:
   env_vars:
     - OTEL_EXPORTER_OTLP_ENDPOINT
     - OTEL_EXPORTER_OTLP_HEADERS
+
+fix_title: "Load The OTel Env Before Running"
+fix_body: "OpenCode reads its OTel config from environment variables. Source the env file the installer wrote in the same shell that runs opencode:"
+fix_lang: bash
+fix_snippet: |
+  # load the OTel env the installer wrote, then run opencode
+  source ~/.config/opencode/.env
+  opencode
+troubleshooting:
+  - q: "No spans after running opencode"
+    a: "Source the installer's env file in the shell before running `opencode` (the snippet above)."
+  - q: "The plugin isn't loading"
+    a: "Re-run the installer (idempotent) — the telemetry plugin is installed globally via npm."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # OpenCode

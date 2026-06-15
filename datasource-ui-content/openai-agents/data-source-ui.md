@@ -98,6 +98,27 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Instrument Before Importing The Agents SDK"
+fix_body: "If an agent run produces no spans, instrumentation likely loaded after the Agents SDK was imported. Re-order so the init runs first:"
+fix_snippet: |
+  # instrument FIRST — before importing the Agents SDK
+  OpenAIAgentsInstrumentor().instrument()
+  openobserve_init()
+
+  # only then import and run your agent
+  from agents import Agent, Runner
+troubleshooting:
+  - q: "Agent runs but no spans appear"
+    a: "Move the init lines above any `from agents import …`."
+  - q: "Spans appear but the filter matches nothing"
+    a: "Top-level runs are named `Agent workflow`; filter with `span_name = 'Agent workflow'`."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # OpenAI Agents SDK

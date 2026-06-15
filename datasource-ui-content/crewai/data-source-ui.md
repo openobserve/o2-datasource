@@ -96,6 +96,30 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Init And Opt-Out Before Instrumenting"
+fix_body: "CrewAI's setup order is reversed from other frameworks. If a crew runs but no spans appear, make sure the telemetry opt-out and openobserve_init() both run before the instrumentor is attached:"
+fix_snippet: |
+  import os
+  os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
+
+  # init FIRST, then attach the instrumentor
+  from openobserve import openobserve_init
+  openobserve_init()
+
+  from openinference.instrumentation.crewai import CrewAIInstrumentor
+  CrewAIInstrumentor().instrument()
+troubleshooting:
+  - q: "Crew runs but no spans appear"
+    a: "Ensure `openobserve_init()` runs before `CrewAIInstrumentor().instrument()` — CrewAI's order is reversed from the other framework cards."
+  - q: "CrewAI's own telemetry is interfering"
+    a: "Set `CREWAI_TELEMETRY_OPT_OUT=true` before importing crewai (the snippet above does this)."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # CrewAI

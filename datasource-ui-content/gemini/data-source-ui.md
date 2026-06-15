@@ -102,6 +102,28 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Instrument Before Importing The Client"
+fix_body: "If your app runs but no spans appear, instrumentation likely loaded after the Gemini client was imported. Re-order so the init runs first:"
+fix_snippet: |
+  # instrument FIRST — before the client is imported
+  GoogleGenerativeAiInstrumentor().instrument()
+  openobserve_init()
+
+  # only then import and use the client
+  from google import genai
+  client = genai.Client()
+troubleshooting:
+  - q: "App runs but no Gemini spans appear"
+    a: "Move the init lines above any `from google import genai`."
+  - q: "Spans appear but the filter matches nothing"
+    a: "Gemini spans set `gen_ai_provider_name = gcp.gen_ai` (not `gen_ai_system`). Filter on that attribute."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # Google Gemini

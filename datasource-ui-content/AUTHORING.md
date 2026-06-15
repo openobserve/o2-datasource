@@ -108,10 +108,11 @@ A rich card renders, top to bottom:
    - Copying a step's code flips its badge to a green check and auto-scrolls to
      the next step.
    - One step is the **detection anchor** — it hosts the live status bar.
-3. **Live status bar** (on the anchor step) — `Start` begins listening; the card
-   polls OpenObserve for the provider's first span and flips to **Connected**
-   (with a "View Traces" CTA) or **Stalled** (with a "most likely fix" box +
-   Recheck). Detection only ever starts on the **Start** click.
+3. **Live status bar** (on the anchor step) — the user runs their app, then
+   clicks **Test**. The card runs a single check (stream exists → COUNT with the
+   `filter`) and flips to **Connected** (with a "View Traces" CTA) or **No Spans
+   Found Yet** (with a "most likely fix" box + a **Test Again** button). One
+   check per click — no background polling.
 4. **Accordions** — "What the installer does" (package + env-var pills),
    troubleshooting Q&A.
 5. **Footer** — docs link + "Ask on Slack".
@@ -158,8 +159,6 @@ detect:
   stream: default                  # fallback stream; overridden by stream_input
   filter: "LOWER(gen_ai_system) = 'myprovider'"   # SQL WHERE fragment, see §8
   model_label: my-model-name       # optional; shown in the "Connected" line
-  # poll_ms: 3000                  # optional, default 3000
-  # timeout_ms: 60000              # optional, default 60000 → "stalled"
 
 # Optional. When present, the card renders a stream-name text field; its value
 # flows BOTH into the install command's {stream} placeholder AND the live
@@ -231,7 +230,12 @@ extras:
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
 
-fix_snippet: |                     # shown in the "most likely fix" box when stalled
+# "Most likely fix" box — shown only after a few failed Tests (not on the first
+# miss). fix_snippet is required for the box to render; the rest is optional.
+fix_title: Instrument Before Importing The Client   # heading after "Most Likely Fix —"
+fix_body: "If your app runs but no spans appear, instrumentation loaded too late. Re-order:"
+fix_lang: python                   # snippet highlight language (default python; use bash for CLI agents)
+fix_snippet: |
   # instrument FIRST — before the client is imported
   MyInstrumentor().instrument()
   openobserve_init()
@@ -267,15 +271,13 @@ rich card; everything else is optional.
 | `tone` | string (hex) | Brand accent; reserved for future theming (the live UI uses the app theme color, not this). |
 | `logo` | string (URL) | Optional logo. See §7. |
 
-### `detect:` — live "listening for the first span"
+### `detect:` — the "Test" check
 | Key | Type | Notes |
 |---|---|---|
 | `stream_type` | `traces` \| `logs` | Stream type to query. |
 | `stream` | string | Fallback stream. When `stream_input` is present, the card's input value overrides this at runtime. Defaults to `default`. |
 | `filter` | string (SQL) | `WHERE` fragment that identifies this provider's spans. See §8. |
 | `model_label` | string | Optional; shown in the "Connected" status line. |
-| `poll_ms` | number | Poll cadence; default `3000`. |
-| `timeout_ms` | number | Give up → "stalled"; default `60000`. |
 
 ### `stream_input:` — optional user-set stream name
 Present → the card renders a text field; the value drives the install command's
@@ -314,7 +316,10 @@ Present → the card renders a text field; the value drives the install command'
 |---|---|---|
 | `extras.installs` | string[] | Package pills. |
 | `extras.env_vars` | string[] | Env-var pills. |
-| `fix_snippet` | string (block) | Shown in the "most likely fix" box when detection stalls. |
+| `fix_snippet` | string (block) | Code/command in the "most likely fix" box (shown after a few failed Tests). Required for the box to render. |
+| `fix_title` | string | Fix-box heading (after "Most Likely Fix —"). Defaults to the instrument-ordering wording. |
+| `fix_body` | string | Explanatory line above the snippet. Has a sensible default. |
+| `fix_lang` | string | Snippet highlight language. Default `python`; use `bash` for CLI agents. |
 | `troubleshooting` | `{ q, a }[]` | Accordion Q&A. |
 | `doc_url` | string | Footer docs link. |
 | `slack_url` | string | Footer Slack link. |
@@ -339,9 +344,9 @@ stable, CORS-friendly, and ideally an SVG/transparent PNG.
 
 ## 8. Writing the `detect.filter` (important)
 
-The filter is a raw SQL `WHERE` fragment counted over `detect.stream`. The card
-polls `SELECT COUNT(*) … WHERE (<filter>) AND _timestamp >= <listen-window>` and
-flips to "Connected" on the first non-zero count.
+The filter is a raw SQL `WHERE` fragment counted over `detect.stream`. On each
+**Test** click the card runs `SELECT COUNT(*) … WHERE (<filter>) AND _timestamp
+>= <recent-window>` once and flips to "Connected" on a non-zero count.
 
 Rules of thumb:
 

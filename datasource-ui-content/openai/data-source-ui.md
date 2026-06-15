@@ -102,6 +102,28 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Instrument Before Importing The Client"
+fix_body: "If your app runs but no spans appear, instrumentation likely loaded after the OpenAI client was imported. Re-order so the init runs first:"
+fix_snippet: |
+  # instrument FIRST — before the client is imported
+  OpenAIInstrumentor().instrument()
+  openobserve_init()
+
+  # only then import and use the client
+  from openai import OpenAI
+  client = OpenAI()
+troubleshooting:
+  - q: "App runs but no OpenAI spans appear"
+    a: "Move the init lines above any `from openai import …` — instrumentation must be installed before the client is imported."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+  - q: "Streaming responses are missing"
+    a: "A span closes when its stream is fully consumed — make sure your loop reads the response to completion."
+
+
 ---
 
 # OpenAI

@@ -57,6 +57,24 @@ steps:
     description: "Open **Traces** and filter `service_name = cursor`. You'll see a span per Cursor request."
     chip: { kind: traces, label: Traces }
     complete_on: detect
+
+fix_title: "Restart Cursor (Desktop App Required)"
+fix_body: "The OTel hook loads when the Cursor desktop app starts, and tracing only works in the desktop app. Confirm the hook config, then fully quit and reopen Cursor:"
+fix_lang: bash
+fix_snippet: |
+  # confirm the hook config exists
+  cat ~/.cursor/hooks/otel_config.json
+
+  # fully quit Cursor, reopen it, run a prompt, then Test again
+troubleshooting:
+  - q: "No spans after running prompts"
+    a: "Fully quit and reopen the Cursor desktop app — the hook is registered at startup. Tracing requires the desktop app, not the CLI."
+  - q: "The hook is already installed"
+    a: "Re-run with `--skip-bootstrap` to skip the upstream hook setup."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # Cursor

@@ -61,6 +61,24 @@ steps:
     complete_on: detect
     pills:
       - service_name
+
+fix_title: "Check Logs, Not Traces"
+fix_body: "Codex exports logs (not spans) in exec mode. If nothing shows, query the Logs view and confirm the exporter block was written to config.toml:"
+fix_lang: bash
+fix_snippet: |
+  # confirm Codex points at OpenObserve
+  cat ~/.codex/config.toml | grep -A4 'otel.exporter'
+
+  # then run a Codex command and open the LOGS view (not Traces)
+troubleshooting:
+  - q: "Nothing shows in Traces"
+    a: "Codex emits logs, not traces. Open the Logs view and filter `service_name = codex_exec`."
+  - q: "The config block is missing"
+    a: "Re-run the installer (idempotent) — it writes `[otel.exporter.otlp-http]` into `~/.codex/config.toml`."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # OpenAI Codex

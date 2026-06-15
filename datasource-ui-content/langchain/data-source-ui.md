@@ -102,6 +102,27 @@ extras:
     - OPENOBSERVE_URL
     - OPENOBSERVE_ORG
     - OPENOBSERVE_AUTH_TOKEN
+
+fix_title: "Instrument Before Importing Your Chains"
+fix_body: "If a chain runs but no spans appear, instrumentation likely loaded after the LangChain modules were imported. Re-order so the init runs first:"
+fix_snippet: |
+  # instrument FIRST — before any langchain import
+  LangchainInstrumentor().instrument()
+  openobserve_init()
+
+  # only then import and build your chains
+  from langchain_openai import ChatOpenAI
+troubleshooting:
+  - q: "Chain runs but no spans appear"
+    a: "Move the init lines above any `from langchain… import …`."
+  - q: "Spans appear but the filter matches nothing"
+    a: "LangChain spans are tagged with `traceloop_span_kind`; filter on that (e.g. `traceloop_span_kind IS NOT NULL`)."
+  - q: "pip complains about an externally-managed environment"
+    a: "The installer auto-retries with `--break-system-packages --user`. No action needed."
+  - q: "Auth errors in the OpenObserve logs"
+    a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
+
+
 ---
 
 # LangChain / LangGraph
