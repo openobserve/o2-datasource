@@ -1,10 +1,16 @@
 # OpenObserve Data Sources UI — AI integration cards
 
-What the OpenObserve **Data Sources** panel should render for each AI
-integration. One folder per integration; each contains a single
-`data-source-ui.md` describing card metadata, install command (with
-`{url}/{org}/{token}` placeholders), the paste-this snippet, the verify
-section, the troubleshooting table, and panel implementation notes.
+What the OpenObserve **Data Sources** panel renders for each AI integration.
+One folder per integration; each contains a single `data-source-ui.md` whose
+**YAML frontmatter IS the card** — provider hero, ordered setup steps (each with
+its own code block + copy/reveal/`.env` chrome), live span detection, and the
+supplementary accordions. The frontend is a thin renderer; adding or editing a
+card is markdown-only, no frontend change.
+
+> 📖 **Authoring a card? Read [AUTHORING.md](AUTHORING.md).** It covers the full
+> architecture (why it's built this way), the content→UI fetch pipeline, the
+> complete frontmatter field reference, and step-by-step instructions with a
+> copy-paste skeleton. This README is just the index + `manifest.json` reference.
 
 The actual installer scripts that these cards point to are handed off
 separately (see the corresponding PR to `openobserve/o2-datasource`).
@@ -35,29 +41,22 @@ separately (see the corresponding PR to `openobserve/o2-datasource`).
 | [opencode/](opencode/data-source-ui.md) | OpenCode | AI / Agents |
 | [cursor/](cursor/data-source-ui.md) | Cursor | AI / Agents |
 
-## Card shape (consistent across all 14)
+## Card shape
 
-Every card follows the same five-section template — so the panel can use a
-single rendering component and pass in per-integration content:
+Every card is a `data-source-ui.md` whose YAML frontmatter declares the whole
+card. An integration gets the rich, stepped card iff its frontmatter has BOTH a
+`card:` block and a `detect:` block; otherwise the panel falls back to a plain
+markdown card. The frontmatter maps 1:1 to the rendered UI (no prose parsing) —
+the markdown body below it is just human-readable notes.
 
-1. **Card metadata** — display name, category, icon filename, tagline,
-   supported runtime.
-2. **Section 1 — Install** — a single `curl | bash` command (or
-   `pip install` / `npm install -g` for agents that ship via their native
-   package manager). Uses `{url}`, `{org}`, `{token}` placeholders the
-   panel substitutes at render time.
-3. **Section 2 — Paste this into your app** — the OTel + OpenObserve
-   import snippet. For framework integrations this is 4–6 lines of Python.
-   For CLI agents this section describes the config file the installer
-   wrote.
-4. **Section 3 — Verify** — the action that produces a trace + what to
-   look for in OpenObserve (span names, attribute filters).
-5. **Section 4 — Troubleshooting** — table of symptom → fix.
+The blocks, in short: `card:` (hero) · `detect:` (live span detection) ·
+`stream_input:` (optional stream-name field → install command `{stream}` +
+detection) · `steps:` (ordered setup steps, each with a chip, code block, note,
+pills) · `extras:` (installer package/env pills) · `fix_snippet` +
+`troubleshooting` · `doc_url` / `slack_url`.
 
-Each card also has a "Panel implementation notes" subsection — call-outs
-for the frontend team about things specific to that card (e.g. crewai's
-`init → instrumentor` order warning, cursor's GUI-only verification
-caveat).
+**See [AUTHORING.md](AUTHORING.md) for the full field reference and a copy-paste
+skeleton.** `anthropic/data-source-ui.md` is the canonical example.
 
 ## Placeholders the panel must substitute
 

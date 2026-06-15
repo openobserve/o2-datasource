@@ -11,7 +11,8 @@ card:
 
 # Live detection — "listening for the first span". The card polls a cheap COUNT
 # over this stream/filter (windowed to listen-time). `stream` MUST match the
-# stream the install command writes to (the SDK default "default").
+# stream the install command writes to. With `stream_input` (below) the card's
+# input drives this and the command's {stream} placeholder together.
 detect:
   stream_type: traces
   stream: default
@@ -20,6 +21,16 @@ detect:
 
 doc_url: https://openobserve.ai/docs/
 slack_url: https://short.openobserve.ai/community
+
+# Optional stream-name input rendered on the card. When present the card
+# shows a text field (default below); the value flows BOTH into the install
+# command's {stream} placeholder AND the live detection below, so the stream
+# the installer writes to and the stream the card listens on stay in lockstep.
+stream_input:
+  label: Traces Stream Name
+  default: default
+  placeholder: default
+  help: Leave as "default" or set a dedicated stream for these traces.
 
 steps:
   - title: Run The Installer
@@ -32,6 +43,7 @@ steps:
         curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/opencode/install.sh | bash -s -- \
           --url={url} \
           --org={org} \
+          --traces-stream={stream} \
           --token="Basic {token}"
 
   - title: Use OpenCode

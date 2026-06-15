@@ -21,6 +21,16 @@ detect:
 doc_url: https://openobserve.ai/docs/
 slack_url: https://short.openobserve.ai/community
 
+# Optional stream-name input rendered on the card. When present the card
+# shows a text field (default below); the value flows BOTH into the install
+# command's {stream} placeholder AND the live detection below, so the stream
+# the installer writes to and the stream the card listens on stay in lockstep.
+stream_input:
+  label: Logs Stream Name
+  default: default
+  placeholder: default
+  help: Leave as "default" or set a dedicated stream for these logs.
+
 steps:
   - title: Run The Installer
     description: "One command points Codex at OpenObserve — writes an `[otel.exporter.otlp-http]` block into `~/.codex/config.toml`. Safe to re-run."
@@ -32,6 +42,7 @@ steps:
         curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/codex/install.sh | bash -s -- \
           --url={url} \
           --org={org} \
+          --logs-stream={stream} \
           --token="Basic {token}"
 
   - title: Use Codex

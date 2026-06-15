@@ -10,10 +10,10 @@ card:
   tone: "#d97757"
 
 # Live detection — "listening for the first span". The card polls a cheap COUNT
-# over this stream/filter (windowed to listen-time). `stream` MUST match the
-# stream the install command writes to (today the SDK default "default"; once
-# o2-datasource#12 ships you can pass --traces-stream=<name> in the command below
-# and set the same <name> here).
+# over this stream/filter (windowed to listen-time). `stream` is the fallback
+# stream; when `stream_input` (below) is present the card's input drives both the
+# install command's {stream} placeholder and the stream listened on, so they
+# always match (the installer accepts --traces-stream / --logs-stream).
 detect:
   stream_type: traces
   stream: default
@@ -22,6 +22,16 @@ detect:
 
 doc_url: https://openobserve.ai/docs/integration/ai/providers/anthropic/
 slack_url: https://short.openobserve.ai/community
+
+# Optional stream-name input rendered on the card. When present the card
+# shows a text field (default below); the value flows BOTH into the install
+# command's {stream} placeholder AND the live detection below, so the stream
+# the installer writes to and the stream the card listens on stay in lockstep.
+stream_input:
+  label: Traces Stream Name
+  default: default
+  placeholder: default
+  help: Leave as "default" or set a dedicated stream for these traces.
 
 steps:
   - title: Run The Installer
@@ -36,6 +46,7 @@ steps:
           --integration=anthropic \
           --url={url} \
           --org={org} \
+          --traces-stream={stream} \
           --token="Basic {token}"
 
   - title: Add These Lines To Your App
