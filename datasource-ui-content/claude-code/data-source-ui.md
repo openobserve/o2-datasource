@@ -17,7 +17,7 @@ card:
 detect:
   stream_type: traces
   stream: default
-  # best-effort; confirm on ingest
+  # confirmed on ingest: Claude Code sets service_name = 'claude-code'
   filter: "service_name = 'claude-code'"
 
 doc_url: https://openobserve.ai/docs/integration/ai/claude-code-tracing/
