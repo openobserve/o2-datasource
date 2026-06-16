@@ -7,6 +7,7 @@ card:
   tagline: Trace every Claude Code conversation turn, no code changes.
   runtime: CLI agent
   setup_time: ~2 min
+  logo: logo.svg
   tone: "#d97757"
 
 # Live detection — "listening for the first span". The card polls a cheap COUNT
