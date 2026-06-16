@@ -7,7 +7,12 @@
       "category": "popular",
       "order": 1,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/openai/",
-      "keywords": ["openai", "gpt", "python", "model provider"]
+      "keywords": [
+        "openai",
+        "gpt",
+        "python",
+        "model provider"
+      ]
     },
     {
       "slug": "anthropic",
@@ -15,7 +20,12 @@
       "category": "popular",
       "order": 2,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/anthropic/",
-      "keywords": ["anthropic", "claude", "python", "model provider"]
+      "keywords": [
+        "anthropic",
+        "claude",
+        "python",
+        "model provider"
+      ]
     },
     {
       "slug": "gemini",
@@ -23,7 +33,11 @@
       "category": "popular",
       "order": 3,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/google-gemini/",
-      "keywords": ["google", "gemini", "model provider"]
+      "keywords": [
+        "google",
+        "gemini",
+        "model provider"
+      ]
     },
     {
       "slug": "claude-code",
@@ -31,7 +45,13 @@
       "category": "popular",
       "order": 4,
       "docURL": "https://openobserve.ai/docs/integration/ai/claude-code-tracing/",
-      "keywords": ["claude", "code", "cli", "anthropic", "tracing"]
+      "keywords": [
+        "claude",
+        "code",
+        "cli",
+        "anthropic",
+        "tracing"
+      ]
     },
     {
       "slug": "codex",
@@ -39,7 +59,12 @@
       "category": "popular",
       "order": 5,
       "docURL": "",
-      "keywords": ["codex", "openai", "cli", "agent"]
+      "keywords": [
+        "codex",
+        "openai",
+        "cli",
+        "agent"
+      ]
     },
     {
       "slug": "cursor",
@@ -47,7 +72,12 @@
       "category": "popular",
       "order": 6,
       "docURL": "",
-      "keywords": ["cursor", "ide", "agent", "editor"]
+      "keywords": [
+        "cursor",
+        "ide",
+        "agent",
+        "editor"
+      ]
     },
     {
       "slug": "opencode",
@@ -55,7 +85,11 @@
       "category": "popular",
       "order": 7,
       "docURL": "",
-      "keywords": ["opencode", "cli", "agent"]
+      "keywords": [
+        "opencode",
+        "cli",
+        "agent"
+      ]
     },
     {
       "slug": "claude-agent-sdk",
@@ -63,7 +97,12 @@
       "category": "popular",
       "order": 8,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/claude-agent-sdk/",
-      "keywords": ["claude", "agent", "sdk", "anthropic"]
+      "keywords": [
+        "claude",
+        "agent",
+        "sdk",
+        "anthropic"
+      ]
     },
     {
       "slug": "langchain",
@@ -71,7 +110,12 @@
       "category": "popular",
       "order": 9,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/langchain/",
-      "keywords": ["langchain", "langgraph", "llm", "chain"]
+      "keywords": [
+        "langchain",
+        "langgraph",
+        "llm",
+        "chain"
+      ]
     },
     {
       "slug": "crewai",
@@ -79,7 +123,11 @@
       "category": "popular",
       "order": 10,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/crewai/",
-      "keywords": ["crewai", "crew", "multi-agent"]
+      "keywords": [
+        "crewai",
+        "crew",
+        "multi-agent"
+      ]
     },
     {
       "slug": "google-adk",
@@ -87,7 +135,11 @@
       "category": "popular",
       "order": 11,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/google-adk/",
-      "keywords": ["google", "adk", "agent development kit"]
+      "keywords": [
+        "google",
+        "adk",
+        "agent development kit"
+      ]
     },
     {
       "slug": "openai-agents",
@@ -95,7 +147,11 @@
       "category": "popular",
       "order": 12,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/",
-      "keywords": ["openai", "agents", "agent sdk"]
+      "keywords": [
+        "openai",
+        "agents",
+        "agent sdk"
+      ]
     },
     {
       "slug": "openrouter",
@@ -103,7 +159,11 @@
       "category": "popular",
       "order": 13,
       "docURL": "https://openobserve.ai/docs/integration/ai/gateways/openrouter/",
-      "keywords": ["openrouter", "router", "gateway"]
+      "keywords": [
+        "openrouter",
+        "router",
+        "gateway"
+      ]
     },
     {
       "slug": "litellm",
@@ -111,7 +171,911 @@
       "category": "popular",
       "order": 14,
       "docURL": "https://openobserve.ai/docs/integration/ai/gateways/litellm-proxy/",
-      "keywords": ["litellm", "proxy", "gateway", "llm"]
+      "keywords": [
+        "litellm",
+        "proxy",
+        "gateway",
+        "llm"
+      ]
+    },
+    {
+      "slug": "agno",
+      "name": "Agno",
+      "category": "frameworks",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/agno/",
+      "keywords": [
+        "agno",
+        "ai framework",
+        "agent"
+      ]
+    },
+    {
+      "slug": "autogen",
+      "name": "AutoGen",
+      "category": "frameworks",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/autogen/",
+      "keywords": [
+        "autogen",
+        "microsoft",
+        "multi-agent"
+      ]
+    },
+    {
+      "slug": "beeai",
+      "name": "BeeAI",
+      "category": "frameworks",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/beeai/",
+      "keywords": [
+        "beeai",
+        "bee",
+        "ai"
+      ]
+    },
+    {
+      "slug": "dspy",
+      "name": "DSPy",
+      "category": "frameworks",
+      "order": 4,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/dspy/",
+      "keywords": [
+        "dspy",
+        "stanford",
+        "prompting"
+      ]
+    },
+    {
+      "slug": "haystack",
+      "name": "Haystack",
+      "category": "frameworks",
+      "order": 5,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/haystack/",
+      "keywords": [
+        "haystack",
+        "deepset",
+        "nlp",
+        "rag"
+      ]
+    },
+    {
+      "slug": "instructor",
+      "name": "Instructor",
+      "category": "frameworks",
+      "order": 6,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/instructor/",
+      "keywords": [
+        "instructor",
+        "structured",
+        "output",
+        "pydantic"
+      ]
+    },
+    {
+      "slug": "koog",
+      "name": "Koog",
+      "category": "frameworks",
+      "order": 7,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/koog/",
+      "keywords": [
+        "koog",
+        "ai"
+      ]
+    },
+    {
+      "slug": "deepagents",
+      "name": "LangChain DeepAgents",
+      "category": "frameworks",
+      "order": 8,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/deepagents/",
+      "keywords": [
+        "deepagents",
+        "deep agents",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "langgraph",
+      "name": "LangGraph",
+      "category": "frameworks",
+      "order": 9,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/langgraph/",
+      "keywords": [
+        "langgraph",
+        "graph",
+        "workflow",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "langserve",
+      "name": "Langserve",
+      "category": "frameworks",
+      "order": 10,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/langserve/",
+      "keywords": [
+        "langserve",
+        "serve",
+        "deploy",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "litellm-sdk",
+      "name": "LiteLLM SDK",
+      "category": "frameworks",
+      "order": 11,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/litellm/",
+      "keywords": [
+        "litellm",
+        "lite",
+        "llm",
+        "sdk"
+      ]
+    },
+    {
+      "slug": "livekit",
+      "name": "LiveKit",
+      "category": "frameworks",
+      "order": 12,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/livekit/",
+      "keywords": [
+        "livekit",
+        "live",
+        "realtime",
+        "voice"
+      ]
+    },
+    {
+      "slug": "llamaindex",
+      "name": "LlamaIndex",
+      "category": "frameworks",
+      "order": 13,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/llamaindex/",
+      "keywords": [
+        "llamaindex",
+        "llama",
+        "index",
+        "rag"
+      ]
+    },
+    {
+      "slug": "llamaindex-workflows",
+      "name": "LlamaIndex Workflows",
+      "category": "frameworks",
+      "order": 14,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/llamaindex-workflows/",
+      "keywords": [
+        "llamaindex",
+        "workflows",
+        "llama"
+      ]
+    },
+    {
+      "slug": "mastra",
+      "name": "Mastra",
+      "category": "frameworks",
+      "order": 15,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/mastra/",
+      "keywords": [
+        "mastra",
+        "ai"
+      ]
+    },
+    {
+      "slug": "microsoft-agent-framework",
+      "name": "Microsoft Agent Framework",
+      "category": "frameworks",
+      "order": 16,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/microsoft-agent-framework/",
+      "keywords": [
+        "microsoft",
+        "agent",
+        "framework"
+      ]
+    },
+    {
+      "slug": "mirascope",
+      "name": "Mirascope",
+      "category": "frameworks",
+      "order": 17,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/mirascope/",
+      "keywords": [
+        "mirascope",
+        "ai"
+      ]
+    },
+    {
+      "slug": "pipecat",
+      "name": "Pipecat",
+      "category": "frameworks",
+      "order": 18,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/pipecat/",
+      "keywords": [
+        "pipecat",
+        "pipe",
+        "voice",
+        "realtime"
+      ]
+    },
+    {
+      "slug": "pydantic-ai",
+      "name": "Pydantic AI",
+      "category": "frameworks",
+      "order": 19,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/pydantic-ai/",
+      "keywords": [
+        "pydantic",
+        "ai",
+        "validation"
+      ]
+    },
+    {
+      "slug": "quarkus-langchain4j",
+      "name": "Quarkus LangChain4j",
+      "category": "frameworks",
+      "order": 20,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/quarkus-langchain4j/",
+      "keywords": [
+        "quarkus",
+        "langchain4j",
+        "java",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "ragas",
+      "name": "Ragas",
+      "category": "frameworks",
+      "order": 21,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/ragas/",
+      "keywords": [
+        "ragas",
+        "rag",
+        "evaluation",
+        "metrics"
+      ]
+    },
+    {
+      "slug": "restate",
+      "name": "Restate",
+      "category": "frameworks",
+      "order": 22,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/restate/",
+      "keywords": [
+        "restate",
+        "durable",
+        "execution"
+      ]
+    },
+    {
+      "slug": "semantic-kernel",
+      "name": "Semantic Kernel",
+      "category": "frameworks",
+      "order": 23,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/semantic-kernel/",
+      "keywords": [
+        "semantic",
+        "kernel",
+        "microsoft",
+        "sdk"
+      ]
+    },
+    {
+      "slug": "smolagents",
+      "name": "SmolAgents",
+      "category": "frameworks",
+      "order": 24,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/smolagents/",
+      "keywords": [
+        "smolagents",
+        "smol",
+        "huggingface"
+      ]
+    },
+    {
+      "slug": "spring-ai",
+      "name": "Spring AI",
+      "category": "frameworks",
+      "order": 25,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/spring-ai/",
+      "keywords": [
+        "spring",
+        "ai",
+        "java",
+        "spring boot"
+      ]
+    },
+    {
+      "slug": "strands-agents",
+      "name": "Strands Agents",
+      "category": "frameworks",
+      "order": 26,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/strands-agents/",
+      "keywords": [
+        "strands",
+        "agents"
+      ]
+    },
+    {
+      "slug": "swiftide",
+      "name": "Swiftide",
+      "category": "frameworks",
+      "order": 27,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/swiftide/",
+      "keywords": [
+        "swiftide",
+        "swift",
+        "rag"
+      ]
+    },
+    {
+      "slug": "temporal",
+      "name": "Temporal",
+      "category": "frameworks",
+      "order": 28,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/temporal/",
+      "keywords": [
+        "temporal",
+        "workflow",
+        "durable execution"
+      ]
+    },
+    {
+      "slug": "vercel-ai-sdk",
+      "name": "Vercel AI SDK",
+      "category": "frameworks",
+      "order": 29,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/vercel-ai-sdk/",
+      "keywords": [
+        "vercel",
+        "ai",
+        "sdk",
+        "nextjs"
+      ]
+    },
+    {
+      "slug": "voltagent",
+      "name": "VoltAgent",
+      "category": "frameworks",
+      "order": 30,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/voltagent/",
+      "keywords": [
+        "voltagent",
+        "volt",
+        "agent"
+      ]
+    },
+    {
+      "slug": "anthropic-jsts",
+      "name": "Anthropic (JS/TS)",
+      "category": "model-providers",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/anthropic-js/",
+      "keywords": [
+        "anthropic",
+        "javascript",
+        "typescript",
+        "claude",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "byteplus",
+      "name": "BytePlus",
+      "category": "model-providers",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/byteplus/",
+      "keywords": [
+        "byteplus",
+        "bytedance",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "cerebras",
+      "name": "Cerebras",
+      "category": "model-providers",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/cerebras/",
+      "keywords": [
+        "cerebras",
+        "model provider",
+        "inference"
+      ]
+    },
+    {
+      "slug": "cohere",
+      "name": "Cohere",
+      "category": "model-providers",
+      "order": 4,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/cohere/",
+      "keywords": [
+        "cohere",
+        "model provider",
+        "embed"
+      ]
+    },
+    {
+      "slug": "cometapi",
+      "name": "CometAPI",
+      "category": "model-providers",
+      "order": 5,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/cometapi/",
+      "keywords": [
+        "cometapi",
+        "comet",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "databricks",
+      "name": "Databricks",
+      "category": "model-providers",
+      "order": 6,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/databricks/",
+      "keywords": [
+        "databricks",
+        "model provider",
+        "spark"
+      ]
+    },
+    {
+      "slug": "deepseek",
+      "name": "DeepSeek",
+      "category": "model-providers",
+      "order": 7,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/deepseek/",
+      "keywords": [
+        "deepseek",
+        "deep",
+        "seek",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "fireworks",
+      "name": "Fireworks AI",
+      "category": "model-providers",
+      "order": 8,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/fireworks/",
+      "keywords": [
+        "fireworks",
+        "fire",
+        "model provider",
+        "inference"
+      ]
+    },
+    {
+      "slug": "groq",
+      "name": "Groq",
+      "category": "model-providers",
+      "order": 9,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/groq/",
+      "keywords": [
+        "groq",
+        "model provider",
+        "inference",
+        "fast"
+      ]
+    },
+    {
+      "slug": "huggingface",
+      "name": "Hugging Face",
+      "category": "model-providers",
+      "order": 10,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/huggingface/",
+      "keywords": [
+        "huggingface",
+        "hugging",
+        "face",
+        "model provider",
+        "transformers"
+      ]
+    },
+    {
+      "slug": "mistral",
+      "name": "Mistral",
+      "category": "model-providers",
+      "order": 11,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/mistral/",
+      "keywords": [
+        "mistral",
+        "model provider",
+        "french"
+      ]
+    },
+    {
+      "slug": "novita",
+      "name": "Novita AI",
+      "category": "model-providers",
+      "order": 12,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/novita/",
+      "keywords": [
+        "novita",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "ollama",
+      "name": "Ollama",
+      "category": "model-providers",
+      "order": 13,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/ollama/",
+      "keywords": [
+        "ollama",
+        "local",
+        "model provider",
+        "self-hosted"
+      ]
+    },
+    {
+      "slug": "openai-jsts",
+      "name": "OpenAI (JS/TS)",
+      "category": "model-providers",
+      "order": 14,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/openai-js/",
+      "keywords": [
+        "openai",
+        "javascript",
+        "typescript",
+        "gpt",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "openai-assistants",
+      "name": "OpenAI Assistants API",
+      "category": "model-providers",
+      "order": 15,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/openai-assistants/",
+      "keywords": [
+        "openai",
+        "assistants",
+        "api",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "together-ai",
+      "name": "Together AI",
+      "category": "model-providers",
+      "order": 16,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/together-ai/",
+      "keywords": [
+        "together",
+        "ai",
+        "model provider",
+        "inference"
+      ]
+    },
+    {
+      "slug": "vllm",
+      "name": "vLLM",
+      "category": "model-providers",
+      "order": 17,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/vllm/",
+      "keywords": [
+        "vllm",
+        "model provider",
+        "inference",
+        "self-hosted"
+      ]
+    },
+    {
+      "slug": "xai-grok",
+      "name": "xAI Grok",
+      "category": "model-providers",
+      "order": 18,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/xai-grok/",
+      "keywords": [
+        "xai",
+        "grok",
+        "elon",
+        "model provider"
+      ]
+    },
+    {
+      "slug": "anannas",
+      "name": "Anannas",
+      "category": "gateways",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/gateways/anannas/",
+      "keywords": [
+        "anannas",
+        "gateway"
+      ]
+    },
+    {
+      "slug": "kong-gateway",
+      "name": "Kong Gateway",
+      "category": "gateways",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/gateways/kong-gateway/",
+      "keywords": [
+        "kong",
+        "gateway",
+        "api"
+      ]
+    },
+    {
+      "slug": "portkey",
+      "name": "Portkey",
+      "category": "gateways",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/gateways/portkey/",
+      "keywords": [
+        "portkey",
+        "gateway",
+        "control"
+      ]
+    },
+    {
+      "slug": "vercel-ai-gateway",
+      "name": "Vercel AI Gateway",
+      "category": "gateways",
+      "order": 4,
+      "docURL": "https://openobserve.ai/docs/integration/ai/gateways/vercel-ai-gateway/",
+      "keywords": [
+        "vercel",
+        "ai",
+        "gateway"
+      ]
+    },
+    {
+      "slug": "codename-goose",
+      "name": "Codename Goose",
+      "category": "no-code",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/codename-goose/",
+      "keywords": [
+        "codename",
+        "goose",
+        "no-code"
+      ]
+    },
+    {
+      "slug": "flowise",
+      "name": "Flowise",
+      "category": "no-code",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/flowise/",
+      "keywords": [
+        "flowise",
+        "flow",
+        "no-code",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "langflow",
+      "name": "Langflow",
+      "category": "no-code",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/langflow/",
+      "keywords": [
+        "langflow",
+        "flow",
+        "no-code",
+        "langchain"
+      ]
+    },
+    {
+      "slug": "lobechat",
+      "name": "LobeChat",
+      "category": "no-code",
+      "order": 4,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/lobechat/",
+      "keywords": [
+        "lobechat",
+        "lobe",
+        "chat",
+        "no-code"
+      ]
+    },
+    {
+      "slug": "n8n",
+      "name": "n8n",
+      "category": "no-code",
+      "order": 5,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/n8n/",
+      "keywords": [
+        "n8n",
+        "automation",
+        "no-code",
+        "workflow"
+      ]
+    },
+    {
+      "slug": "openwebui",
+      "name": "OpenWebUI",
+      "category": "no-code",
+      "order": 6,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/openwebui/",
+      "keywords": [
+        "openwebui",
+        "open",
+        "web",
+        "ui",
+        "no-code"
+      ]
+    },
+    {
+      "slug": "vapi",
+      "name": "Vapi",
+      "category": "no-code",
+      "order": 7,
+      "docURL": "https://openobserve.ai/docs/integration/ai/no-code/vapi/",
+      "keywords": [
+        "vapi",
+        "voice",
+        "api",
+        "no-code"
+      ]
+    },
+    {
+      "slug": "mixpanel",
+      "name": "Mixpanel",
+      "category": "analytics",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/mixpanel/",
+      "keywords": [
+        "mixpanel",
+        "analytics",
+        "product"
+      ]
+    },
+    {
+      "slug": "posthog",
+      "name": "PostHog",
+      "category": "analytics",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/posthog/",
+      "keywords": [
+        "posthog",
+        "analytics",
+        "product",
+        "open source"
+      ]
+    },
+    {
+      "slug": "trubrics",
+      "name": "Trubrics",
+      "category": "analytics",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/trubrics/",
+      "keywords": [
+        "trubrics",
+        "evaluation",
+        "analytics",
+        "feedback"
+      ]
+    },
+    {
+      "slug": "cognee",
+      "name": "Cognee",
+      "category": "tools",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/cognee/",
+      "keywords": [
+        "cognee",
+        "knowledge",
+        "graph"
+      ]
+    },
+    {
+      "slug": "exa",
+      "name": "Exa",
+      "category": "tools",
+      "order": 2,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/exa/",
+      "keywords": [
+        "exa",
+        "search",
+        "api"
+      ]
+    },
+    {
+      "slug": "firecrawl",
+      "name": "Firecrawl",
+      "category": "tools",
+      "order": 3,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/firecrawl/",
+      "keywords": [
+        "firecrawl",
+        "crawl",
+        "scrape",
+        "web"
+      ]
+    },
+    {
+      "slug": "gradio",
+      "name": "Gradio",
+      "category": "tools",
+      "order": 4,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/gradio/",
+      "keywords": [
+        "gradio",
+        "ui",
+        "demo",
+        "huggingface"
+      ]
+    },
+    {
+      "slug": "librechat",
+      "name": "LibreChat",
+      "category": "tools",
+      "order": 5,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/librechat/",
+      "keywords": [
+        "librechat",
+        "libre",
+        "chat",
+        "open source"
+      ]
+    },
+    {
+      "slug": "mcp-use",
+      "name": "mcp-use",
+      "category": "tools",
+      "order": 6,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/mcp-use/",
+      "keywords": [
+        "mcp",
+        "use",
+        "model context protocol"
+      ]
+    },
+    {
+      "slug": "milvus",
+      "name": "Milvus",
+      "category": "tools",
+      "order": 7,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/milvus/",
+      "keywords": [
+        "milvus",
+        "vector",
+        "database",
+        "embedding"
+      ]
+    },
+    {
+      "slug": "parallel",
+      "name": "Parallel",
+      "category": "tools",
+      "order": 8,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/parallel/",
+      "keywords": [
+        "parallel",
+        "ai"
+      ]
+    },
+    {
+      "slug": "promptfoo",
+      "name": "Promptfoo",
+      "category": "tools",
+      "order": 9,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/promptfoo/",
+      "keywords": [
+        "promptfoo",
+        "prompt",
+        "testing",
+        "evaluation"
+      ]
+    },
+    {
+      "slug": "zapier",
+      "name": "Zapier",
+      "category": "tools",
+      "order": 10,
+      "docURL": "https://openobserve.ai/docs/integration/ai/tools/zapier/",
+      "keywords": [
+        "zapier",
+        "automation",
+        "integration",
+        "no-code"
+      ]
     }
   ]
 }
