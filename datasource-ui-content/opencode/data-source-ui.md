@@ -4,7 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: OpenCode
-  logo: logo.svg
+  logo: logo.png
   tagline: "Trace every OpenCode session: agent steps, tool calls, file ops."
   runtime: CLI agent
   setup_time: ~2 min

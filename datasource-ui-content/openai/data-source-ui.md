@@ -5,6 +5,7 @@
 card:
   name: OpenAI
   logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: Trace every OpenAI Python SDK call.
   runtime: Python 3.10–3.13
   setup_time: ~2 min
