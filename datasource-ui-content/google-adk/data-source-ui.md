@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Google ADK
+  logo: logo.svg
   tagline: Trace every ADK agent run, LLM call, and tool execution.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

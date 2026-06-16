@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Google Gemini
+  logo: logo.svg
   tagline: Trace every Gemini API call from your Python app.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

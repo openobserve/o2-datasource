@@ -4,6 +4,8 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Cursor
+  logo: logo.png
+  logo_dark: dark-logo.png
   tagline: "Trace Cursor Agent activity: tool calls, file ops, prompt context."
   runtime: CLI agent
   setup_time: ~2 min

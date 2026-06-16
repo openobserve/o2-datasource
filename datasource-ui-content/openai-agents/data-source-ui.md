@@ -4,6 +4,8 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: OpenAI Agents SDK
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: Trace every agent workflow, handoff, and LLM call.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

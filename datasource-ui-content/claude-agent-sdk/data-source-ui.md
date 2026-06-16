@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Claude Agent SDK
+  logo: logo.svg
   tagline: Trace every agent run — token usage, turn counts, error status.
   runtime: Python 3.10–3.13
   setup_time: ~2 min
