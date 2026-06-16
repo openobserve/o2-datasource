@@ -112,6 +112,14 @@
       "order": 14,
       "docURL": "https://openobserve.ai/docs/integration/ai/gateways/litellm-proxy/",
       "keywords": ["litellm", "proxy", "gateway", "llm"]
+    },
+    {
+      "slug": "agno",
+      "name": "Agno",
+      "category": "frameworks",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/agno/",
+      "keywords": ["agno", "ai framework", "agent"]
     }
   ]
 }
