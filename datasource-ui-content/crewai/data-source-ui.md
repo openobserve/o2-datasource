@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: CrewAI
+  logo: logo.svg
   tagline: Trace every crew, agent, task, and tool execution.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

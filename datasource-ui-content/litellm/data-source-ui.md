@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: LiteLLM
+  logo: logo.svg
   tagline: Trace LLM calls across 100+ providers via a unified interface.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

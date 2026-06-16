@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: LangChain / LangGraph
+  logo: logo.svg
   tagline: Trace every chain, LLM call, tool invocation, and retrieval step.
   runtime: Python 3.10–3.13
   setup_time: ~2 min

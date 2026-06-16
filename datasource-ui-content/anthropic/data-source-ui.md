@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Anthropic
+  logo: logo.svg
   tagline: Trace every Claude API call from your Python app.
   runtime: Python 3.9+
   setup_time: ~2 min

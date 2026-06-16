@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: OpenAI Codex
+  logo: logo.svg
   tagline: Per-conversation logs from every Codex CLI session.
   runtime: CLI agent
   setup_time: ~2 min

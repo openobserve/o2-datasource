@@ -4,6 +4,7 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: OpenRouter
+  logo: logo.svg
   tagline: Trace LLM calls routed through 200+ provider models via a single endpoint.
   runtime: Python 3.10–3.13
   setup_time: ~2 min
