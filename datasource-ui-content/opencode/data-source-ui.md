@@ -5,6 +5,7 @@
 card:
   name: OpenCode
   logo: logo.png
+  logo_dark: dark-logo.png
   tagline: "Trace every OpenCode session: agent steps, tool calls, file ops."
   runtime: CLI agent
   setup_time: ~2 min

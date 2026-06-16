@@ -5,6 +5,7 @@
 card:
   name: OpenRouter
   logo: logo.png
+  logo_dark: dark-logo.png
   tagline: Trace LLM calls routed through 200+ provider models via a single endpoint.
   runtime: Python 3.10–3.13
   setup_time: ~2 min
