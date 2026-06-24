@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """
-Strip the OpenObserve Stop hook + managed env vars from a Claude Code
-settings.json (or settings.local.json) file.
+Strip the OpenObserve telemetry config from a Claude Code settings.json
+(or settings.local.json).
 
-Reads config from stdin — one value per line:
+Reads the settings file path from stdin (one line).
 
-    1. settings file path
-    2. (unused; kept for symmetry with _merge_settings.py)
+Removes the managed native OTLP env keys this integration writes, plus any
+leftover keys / `Stop` hook from the older hook-based flow. If `env` or
+`hooks.Stop` becomes empty it is removed entirely, so no dead keys are left
+behind. Other top-level keys (permissions, anything not ours) are untouched.
 
-The hook is found by filename suffix (`openobserve_hooks.py`), so a Python
-interpreter change between install and uninstall does NOT cause us to miss
-the entry.
-
-If after stripping, an `env` or `hooks.Stop` block becomes empty, it's
-removed entirely so we don't leave behind dead keys.
-
-Other top-level keys (permissions, anything not ours) are left untouched.
+Note: the OTEL_* keys are treated as managed by this integration (the
+installer overwrites them), so uninstall removes them. If you point Claude
+Code at another OTLP backend after uninstalling, re-set those vars.
 """
 import json
 import os
@@ -24,8 +21,18 @@ import sys
 import tempfile
 
 
-HOOK_FILENAME = "openobserve_hooks.py"
+LEGACY_HOOK_FILENAME = "openobserve_hooks.py"
 MANAGED_ENV_KEYS = (
+    # native OTLP telemetry (current flow)
+    "CLAUDE_CODE_ENABLE_TELEMETRY",
+    "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
+    "OTEL_METRICS_EXPORTER",
+    "OTEL_LOGS_EXPORTER",
+    "OTEL_TRACES_EXPORTER",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
+    # legacy hook-based flow
     "TRACE_TO_OPENOBSERVE",
     "OPENOBSERVE_URL",
     "OPENOBSERVE_ORG",
@@ -41,7 +48,7 @@ def main() -> int:
         print(f"Failed to read settings path from stdin: {e}", file=sys.stderr)
         return 2
 
-    if not path or not path.exists() or path.stat().st_size == 0:
+    if not path.name or not path.exists() or path.stat().st_size == 0:
         return 0
 
     try:
@@ -52,7 +59,7 @@ def main() -> int:
     if not isinstance(settings, dict):
         return 0
 
-    # Strip our env vars.
+    # Strip our env vars (native + legacy).
     env = settings.get("env")
     if isinstance(env, dict):
         for k in MANAGED_ENV_KEYS:
@@ -62,7 +69,7 @@ def main() -> int:
         else:
             settings.pop("env", None)
 
-    # Strip Stop-hook entries that point at openobserve_hooks.py (by suffix).
+    # Strip any legacy Stop-hook entries that point at openobserve_hooks.py.
     hooks = settings.get("hooks")
     if isinstance(hooks, dict):
         stop_groups = hooks.get("Stop")
@@ -82,7 +89,7 @@ def main() -> int:
                         new_inner.append(h)
                         continue
                     cmd = h.get("command", "")
-                    if isinstance(cmd, str) and cmd.endswith(HOOK_FILENAME):
+                    if isinstance(cmd, str) and cmd.endswith(LEGACY_HOOK_FILENAME):
                         # Drop this entry.
                         continue
                     new_inner.append(h)

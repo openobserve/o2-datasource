@@ -4,39 +4,29 @@
 # `card:` + `detect:` block is what turns this integration into the rich card.
 card:
   name: Claude Code
-  tagline: Trace every Claude Code conversation turn, no code changes.
+  tagline: Stream Claude Code metrics, events, and traces to OpenObserve — no code changes.
   runtime: CLI agent
   setup_time: ~2 min
   logo: logo.svg
   tone: "#d97757"
 
-# Live detection — "listening for the first span". The card polls a cheap COUNT
-# over this stream/filter (windowed to listen-time). `stream` is the fallback;
-# with `stream_input` (below) the card's input drives both the install command's
-# {stream} placeholder (--traces-stream) and the stream listened on, so the OTel
-# config written into Claude Code's settings.json and detection stay in lockstep.
+# Live detection — "listening for the first event". The card polls a cheap COUNT
+# over this stream/filter (windowed to listen-time). Claude Code's native OTLP
+# exporter lands events in the `claude_code` logs stream; metrics land in the
+# `claude_code_*` streams and the per-turn span tree under traces. We listen on
+# the events stream because it's on by default (traces are beta).
 detect:
-  stream_type: traces
-  stream: default
-  # confirmed on ingest: Claude Code sets service_name = 'claude-code'
+  stream_type: logs
+  stream: claude_code
+  # confirmed on ingest: Claude Code sets service_name = 'claude-code' on every signal
   filter: "service_name = 'claude-code'"
 
 doc_url: https://openobserve.ai/docs/integration/ai/claude-code-tracing/
 slack_url: https://short.openobserve.ai/community
 
-# Optional stream-name input rendered on the card. When present the card
-# shows a text field (default below); the value flows BOTH into the install
-# command's {stream} placeholder AND the live detection below, so the stream
-# the installer writes to and the stream the card listens on stay in lockstep.
-stream_input:
-  label: Traces Stream Name
-  default: default
-  placeholder: default
-  help: Leave as "default" or set a dedicated stream for these traces.
-
 steps:
   - title: Run The Installer
-    description: "One command registers a `Stop` hook and writes the OpenObserve OTel config into Claude Code's `settings.json`. Safe to re-run."
+    description: "One command writes Claude Code's native OpenTelemetry config into `settings.json` — metrics, events, and (beta) traces over OTLP. No hook, no SDK. Safe to re-run."
     chip: { kind: terminal, label: Terminal }
     complete_on: copy
     code:
@@ -45,39 +35,40 @@ steps:
         curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/claude-code/install.sh | bash -s -- \
           --url={url} \
           --org={org} \
-          --traces-stream={stream} \
           --token="Basic {token}" \
           --scope=global
 
   - title: Use Claude Code
-    description: "Just use Claude Code normally — start a session and run a turn in any project. The `Stop` hook ships a trace automatically each turn."
+    description: "Start a fresh session and run a turn in any project. Claude Code exports telemetry automatically — every prompt, model request, and tool result ships over OTLP."
     chip: { kind: run, label: Run }
     complete_on: detect
     detection_anchor: true
 
   - title: Check OpenObserve
-    description: "Open **Traces** and filter `service.name = claude-code`. You'll see a span tree per turn:"
-    chip: { kind: traces, label: Traces }
+    description: "Open **Logs** and select the `claude_code` stream — you'll see events streaming in. Metrics land in `claude_code_*`; the per-turn span tree is under **Traces**."
+    chip: { kind: logs, label: Logs }
     complete_on: detect
     pills:
-      - service.name
-      - tool calls
+      - cost & tokens
+      - tool decisions
       - model usage
 
 
 fix_title: "Re-run The Installer And Restart Claude Code"
-fix_body: "Traces come from a Stop hook in settings.json. If turns aren't traced, confirm the hook is registered, then start a fresh session:"
+fix_body: "Telemetry comes from the env block in settings.json, read at session start. If nothing arrives, confirm it's present, then start a fresh session:"
 fix_lang: bash
 fix_snippet: |
-  # confirm the Stop hook + OpenObserve env are present
-  cat ~/.claude/settings.json | grep -A3 openobserve_hooks
+  # confirm the native telemetry env is present
+  cat ~/.claude/settings.json | grep CLAUDE_CODE_ENABLE_TELEMETRY
 
   # if missing, re-run the installer (safe to re-run), then start a new session
 troubleshooting:
-  - q: "Turns run but no traces appear"
-    a: "Start a fresh Claude Code session after installing — the Stop hook is read at session start."
-  - q: "The hook isn't in settings.json"
+  - q: "Turns run but no data appears"
+    a: "Start a fresh Claude Code session after installing — the env block is read at session start, not mid-session."
+  - q: "The env isn't in settings.json"
     a: "Re-run the installer (idempotent). Use `--scope=project` to write to the project's `.claude/settings.local.json` instead."
+  - q: "Logs and metrics land but no traces"
+    a: "Traces are beta: confirm CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1 and OTEL_TRACES_EXPORTER=otlp are set (the installer adds both), then start a new session."
   - q: "Auth errors in the OpenObserve logs"
     a: "The token must be `Basic <base64>` or `Bearer <token>`. Re-copy it from Manage Tokens above."
 
@@ -86,5 +77,8 @@ troubleshooting:
 
 # Claude Code
 
-Trace every Claude Code conversation turn, no code changes. The OpenObserve Data
-Sources panel renders the stepped setup card from the frontmatter above.
+Stream Claude Code's usage telemetry to OpenObserve with no code changes. The
+installer turns on Claude Code's native OpenTelemetry exporter — metrics,
+events, and beta traces over OTLP — by writing the config into `settings.json`.
+The OpenObserve Data Sources panel renders the stepped setup card from the
+frontmatter above.

@@ -1,15 +1,18 @@
 #!/bin/bash
 # o2-datasource / ai / agents / claude-code / install.sh
 #
-# Installs the Claude Code -> OpenObserve Stop hook.
-# Reference: https://openobserve.ai/docs/integration/ai/agents/claude-code/
+# Points Claude Code at OpenObserve using Claude Code's native OpenTelemetry
+# support. Writes the CLAUDE_CODE_* + OTEL_* env vars into Claude Code's
+# settings.json so every session exports metrics, events, and (beta) traces
+# to OpenObserve over OTLP. No hook, no SDK, no code changes.
+#
+# Reference: https://openobserve.ai/docs/integration/ai/claude-code-tracing/
 #
 # Usage (curl|bash):
 #   curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/claude-code/install.sh | \
 #     bash -s -- \
 #       --url=https://api.openobserve.ai \
 #       --org=default \
-#       --traces-stream=claude_code_traces \
 #       --token="Basic <base64>" \
 #       --scope=global
 
@@ -40,19 +43,6 @@ fi
 # shellcheck disable=SC1090
 source "$COMMON_SH"
 
-# ── Resolve hook source (local checkout or curl) ─────────────────────────────
-HOOK_SRC=""
-if [ -n "$_self_dir" ] && [ -f "$_self_dir/openobserve_hooks.py" ]; then
-    HOOK_SRC="$_self_dir/openobserve_hooks.py"
-else
-    HOOK_SRC="$(mktemp)"
-    TEMP_FILES+=("$HOOK_SRC")
-    if ! curl -fsSL "$REPO_RAW/agents/claude-code/openobserve_hooks.py" -o "$HOOK_SRC"; then
-        print_error "Failed to fetch openobserve_hooks.py from $REPO_RAW"
-        exit 1
-    fi
-fi
-
 # ── Resolve _merge_settings.py source (local checkout or curl) ───────────────
 MERGE_SRC=""
 if [ -n "$_self_dir" ] && [ -f "$_self_dir/_merge_settings.py" ]; then
@@ -70,25 +60,23 @@ fi
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
-O2_TRACES_STREAM=""
 SCOPE="global"
 DRY_RUN=0
 
 # ── Usage ────────────────────────────────────────────────────────────────────
 usage() {
     cat <<EOF
-Claude Code -> OpenObserve installer
+Claude Code -> OpenObserve installer (native OpenTelemetry)
 
 Usage:
     $0 [OPTIONS]
 
 Required:
-    --url=URL             OpenObserve instance URL
+    --url=URL             OpenObserve instance URL (e.g. https://api.openobserve.ai)
     --org=ID              OpenObserve organization slug or ID
     --token=TOKEN         Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
-    --traces-stream=NAME  OpenObserve stream name for traces (SDK default: default)
     --scope=SCOPE         "global" (~/.claude/settings.json) or
                           "project" (./.claude/settings.local.json)
                           Default: global
@@ -99,7 +87,6 @@ Optional:
 Examples:
     $0 --url=https://api.openobserve.ai \\
        --org=default \\
-       --traces-stream=claude_code_traces \\
        --token="Basic \$(echo -n 'me@example.com:pass' | base64)"
 EOF
 }
@@ -110,8 +97,12 @@ for arg in "$@"; do
         --url=*)     O2_URL="${arg#*=}" ;;
         --org=*)     O2_ORG="${arg#*=}" ;;
         --token=*)   O2_TOKEN="${arg#*=}" ;;
-        --traces-stream=*) O2_TRACES_STREAM="${arg#*=}" ;;
         --scope=*)   SCOPE="${arg#*=}" ;;
+        --traces-stream=*)
+            # Deprecated: native telemetry lands in OpenObserve-derived streams
+            # (claude_code logs/traces, claude_code_* metrics) — not settable here.
+            print_warning "--traces-stream is deprecated and ignored; native telemetry uses the claude_code streams."
+            ;;
         --quiet)     O2_QUIET=1 ;;
         --dry-run)   DRY_RUN=1 ;;
         --help|-h)   usage; exit 0 ;;
@@ -148,7 +139,7 @@ if ! validate_url "$O2_URL"; then
 fi
 O2_URL="$(strip_trailing_slash "$O2_URL")"
 
-# Token format check (matches frameworks/setup.sh policy: warn, don't reject)
+# Token format check (warn, don't reject).
 token_scheme="${O2_TOKEN%% *}"
 token_payload="${O2_TOKEN#* }"
 case "$token_scheme" in
@@ -161,38 +152,28 @@ case "$token_scheme" in
     *) print_warning "Token does not start with 'Basic ' or 'Bearer '. Continuing." ;;
 esac
 
-# ── Resolve python ───────────────────────────────────────────────────────────
+# ── Resolve python (used only for the JSON settings merge) ────────────────────
 PY="$(detect_python)" || {
     print_error "Python 3.9+ not found on PATH. Install python3 and re-run."
     exit 1
 }
 print_info "Using Python: $($PY --version 2>&1)"
-if [ -n "${VIRTUAL_ENV:-}" ]; then
-    print_info "Active virtualenv: $VIRTUAL_ENV (pip will install into it)"
-fi
 
-# ── Resolve paths for this scope ─────────────────────────────────────────────
+# ── Resolve settings path for this scope ─────────────────────────────────────
 if [ "$SCOPE" = "global" ]; then
-    CLAUDE_DIR="$HOME/.claude"
-    SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+    SETTINGS_FILE="$HOME/.claude/settings.json"
 else
-    CLAUDE_DIR="./.claude"
-    SETTINGS_FILE="$CLAUDE_DIR/settings.local.json"
+    SETTINGS_FILE="./.claude/settings.local.json"
 fi
-HOOKS_DIR="$HOME/.claude/hooks"           # hook script always lives globally
-HOOK_DEST="$HOOKS_DIR/openobserve_hooks.py"
-STATE_DIR="$HOME/.claude/state"
-LOG_FILE="$STATE_DIR/openobserve_hook.log"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
-[ -n "$O2_TRACES_STREAM" ] && print_info "Traces stream: $O2_TRACES_STREAM"
+print_info "OTLP endpoint: $O2_URL/api/$O2_ORG"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
 print_info "Scope: $SCOPE"
 print_info "Settings file: $SETTINGS_FILE"
-print_info "Hook script: $HOOK_DEST"
-print_info "Log file: $LOG_FILE"
+print_info "Signals: metrics + events + traces (beta)"
 
 if (( DRY_RUN == 1 )); then
     print_success "Dry-run mode: configuration valid. No changes made."
@@ -201,33 +182,8 @@ fi
 
 install_error_trap
 
-# ── Step 1: pip install openobserve-telemetry-sdk ────────────────────────────
-print_step "1/4" "Installing openobserve-telemetry-sdk..."
-retry_command pip_install "$PY" openobserve-telemetry-sdk
-print_success "SDK installed."
-
-# Verify the imports the hook depends on are usable now.
-if ! verify_imports "$PY" "from openobserve import openobserve_init_traces, openobserve_flush, openobserve_shutdown; from opentelemetry import trace"; then
-    print_error "openobserve-telemetry-sdk imports failed after install. See errors above."
-    exit 1
-fi
-
-# ── Step 2: Copy openobserve_hooks.py into place ─────────────────────────────
-print_step "2/4" "Installing hook script..."
-mkdir -p "$HOOKS_DIR"
-# Back up an existing hook if present.
-if [ -f "$HOOK_DEST" ]; then
-    backup="${HOOK_DEST}.bak.$(date +%s)"
-    cp "$HOOK_DEST" "$backup"
-    RESOURCES_CREATED+=("backup: $backup")
-    print_info "Backed up existing hook to $backup"
-fi
-cp "$HOOK_SRC" "$HOOK_DEST"
-RESOURCES_CREATED+=("hook: $HOOK_DEST")
-print_success "Hook script installed at $HOOK_DEST"
-
-# ── Step 3: Merge into settings file ─────────────────────────────────────────
-print_step "3/4" "Merging Stop hook + env into $SETTINGS_FILE..."
+# ── Step 1: Merge native telemetry env into settings file ────────────────────
+print_step "1/2" "Writing native OpenTelemetry env into $SETTINGS_FILE..."
 mkdir -p "$(dirname "$SETTINGS_FILE")"
 
 # Backup if the settings file already exists.
@@ -239,36 +195,35 @@ if [ -f "$SETTINGS_FILE" ]; then
 fi
 
 # Delegate the JSON merge to _merge_settings.py. Config goes over stdin
-# (not env / argv) so the auth token never appears in `ps` output.
-# The merge script uses $PY for the hook command, matches existing entries
-# by filename suffix (so a Python upgrade between installs doesn't
-# duplicate the Stop hook), and updates the command in place if found.
+# (not env / argv) so the auth token never appears in `ps` output. The merge
+# writes/updates only the managed CLAUDE_CODE_* + OTEL_* keys, and migrates
+# any older install by stripping the legacy openobserve_hooks.py Stop hook.
 if ! printf '%s\n' \
         "$SETTINGS_FILE" \
-        "$PY $HOOK_DEST" \
         "$O2_URL" \
         "$O2_ORG" \
         "$O2_TOKEN" \
-        "$O2_TRACES_STREAM" \
     | "$PY" "$MERGE_SRC"; then
     print_error "Settings merge failed."
     exit 1
 fi
 print_success "$SETTINGS_FILE updated."
 
-# ── Step 4: Done — print verification + uninstall instructions ───────────────
-print_step "4/4" "Done. Next steps:"
+# ── Step 2: Done — print verification + uninstall instructions ───────────────
+print_step "2/2" "Done. Next steps:"
 cat <<EOF
 
-  Hook script:    $HOOK_DEST
   Settings file:  $SETTINGS_FILE
-  Hook log:       $LOG_FILE
+  OTLP endpoint:  $O2_URL/api/$O2_ORG
 
 Verify it's working:
 
-  1. Start a new Claude Code session and ask it anything trivial.
-  2. tail -f $LOG_FILE  — you should see "Processed N turns" lines.
-  3. In OpenObserve, open Traces and filter by service.name=claude-code.
+  1. Start a NEW Claude Code session (env is read at session start) and run any
+     trivial turn.
+  2. In OpenObserve, open Logs and select the 'claude_code' stream — you should
+     see events (user_prompt, api_request, tool_result, ...).
+  3. Metrics land in the 'claude_code_*' streams; the per-turn span tree shows
+     up under Traces (service.name = claude-code).
 
 Uninstall:
 
