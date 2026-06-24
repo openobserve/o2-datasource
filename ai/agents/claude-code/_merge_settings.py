@@ -65,7 +65,11 @@ def main() -> int:
         "OTEL_TRACES_EXPORTER": "otlp",
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
-        "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token}",
+        # stream-name routes OpenObserve's OTLP logs + traces into the
+        # `claude_code` stream (what the dashboard and the card's detection
+        # query). Without it they land in the `default` stream. Metric streams
+        # are named per-metric (claude_code_*) and are unaffected by this header.
+        "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token},stream-name=claude_code",
     }
 
     settings = {}
