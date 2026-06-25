@@ -1,11 +1,11 @@
 #!/bin/bash
 # o2-datasource / ai / agents / claude-code / uninstall.sh
 #
-# Removes the Claude Code -> OpenObserve hook installed by install.sh.
-# Reverses everything install.sh wrote:
-#   - Removes the Stop hook entry that points at openobserve_hooks.py
-#   - Removes the managed env keys from settings
-#   - Optionally removes the hook script and state files
+# Removes the Claude Code -> OpenObserve telemetry config written by install.sh.
+# Reverses everything install.sh wrote, and cleans up the older hook-based flow:
+#   - Removes the managed CLAUDE_CODE_* + OTEL_* env keys from settings
+#   - Removes any legacy Stop hook entry that points at openobserve_hooks.py
+#   - Optionally removes the legacy hook script and state files
 
 set -euo pipefail
 
@@ -58,9 +58,9 @@ Usage:
 
 Options:
     --scope=SCOPE          "global" or "project" (default: global)
-    --remove-hook-script   Also delete \$HOME/.claude/hooks/openobserve_hooks.py
-    --remove-state         Also delete \$HOME/.claude/state/openobserve_*
-    --remove-all           Remove everything (hook script, state, settings entries)
+    --remove-hook-script   (legacy) Also delete \$HOME/.claude/hooks/openobserve_hooks.py
+    --remove-state         (legacy) Also delete \$HOME/.claude/state/openobserve_*
+    --remove-all           Remove everything (legacy hook script, state, settings entries)
     --dry-run              Show what would be removed
     --force                Skip confirmation prompts
     --quiet                Suppress info logs

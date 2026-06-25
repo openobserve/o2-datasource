@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-Merge the OpenObserve Stop hook + env vars into a Claude Code settings.json
-(or settings.local.json) file.
+Merge Claude Code's native OpenTelemetry env vars into a Claude Code
+settings.json (or settings.local.json) so it exports metrics, events, and
+(beta) traces to OpenObserve over OTLP — no hook, no SDK.
 
 Reads config from stdin — one value per line, in this order:
 
-    1. settings file path           e.g. /Users/me/.claude/settings.json
-    2. hook command string          e.g. "python3.11 /Users/me/.claude/hooks/openobserve_hooks.py"
-    3. OPENOBSERVE_URL value
-    4. OPENOBSERVE_ORG value
-    5. OPENOBSERVE_AUTH_TOKEN value
-    6. OPENOBSERVE_TRACES_STREAM_NAME value (optional)
+    1. settings file path     e.g. /Users/me/.claude/settings.json
+    2. OpenObserve base URL   e.g. https://api.openobserve.ai
+    3. OpenObserve org        e.g. default
+    4. Auth header value      e.g. "Basic <base64>" or "Bearer <token>"
 
 Stdin is used (rather than env vars or argv) so the auth token never appears
 in `ps` output or any subprocess environment block.
 
 Behavior:
-  - Existing env block: only the managed keys are added/updated. All
-    other keys preserved.
-  - Existing hooks.Stop block: if any entry's command ends with
-    `openobserve_hooks.py`, its `command` is updated in place (so a Python
-    interpreter change between installs doesn't create duplicates). If no
-    such entry exists, a new one is appended.
+  - Adds/updates only the managed CLAUDE_CODE_* and OTEL_* keys in `env`.
+    Every other env key is preserved.
+  - Migrates older installs: removes the legacy custom env vars
+    (TRACE_TO_OPENOBSERVE, OPENOBSERVE_*) and the legacy `Stop` hook that
+    pointed at openobserve_hooks.py, so re-running cleans up the old flow.
   - All other top-level keys (permissions, etc.) are left untouched.
   - Write is atomic: tempfile + os.replace.
 """
@@ -32,33 +30,47 @@ import sys
 import tempfile
 
 
-HOOK_FILENAME = "openobserve_hooks.py"
+LEGACY_HOOK_FILENAME = "openobserve_hooks.py"
+LEGACY_ENV_KEYS = (
+    "TRACE_TO_OPENOBSERVE",
+    "OPENOBSERVE_URL",
+    "OPENOBSERVE_ORG",
+    "OPENOBSERVE_AUTH_TOKEN",
+    "OPENOBSERVE_TRACES_STREAM_NAME",
+)
 
 
 def main() -> int:
     try:
         path = pathlib.Path(sys.stdin.readline().rstrip("\n"))
-        hook_cmd = sys.stdin.readline().rstrip("\n")
         url = sys.stdin.readline().rstrip("\n")
         org = sys.stdin.readline().rstrip("\n")
         token = sys.stdin.readline().rstrip("\n")
-        traces_stream = sys.stdin.readline().rstrip("\n")
     except Exception as e:
         print(f"Failed to read config from stdin: {e}", file=sys.stderr)
         return 2
 
-    if not path or not hook_cmd:
-        print("Missing required input on stdin (path or hook_cmd).", file=sys.stderr)
+    if not path.name or not url or not org or not token:
+        print("Missing required input on stdin (path, url, org, or token).", file=sys.stderr)
         return 2
 
+    # OpenObserve OTLP base endpoint. The OTel SDK appends /v1/metrics,
+    # /v1/logs, and /v1/traces itself, so this must NOT end in a slash.
+    endpoint = f"{url.rstrip('/')}/api/{org}"
     managed_env = {
-        "TRACE_TO_OPENOBSERVE": "true",
-        "OPENOBSERVE_URL": url,
-        "OPENOBSERVE_ORG": org,
-        "OPENOBSERVE_AUTH_TOKEN": token,
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+        "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": "1",
+        "OTEL_METRICS_EXPORTER": "otlp",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_TRACES_EXPORTER": "otlp",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
+        # stream-name routes OpenObserve's OTLP logs + traces into the
+        # `claude_code` stream (what the dashboard and the card's detection
+        # query). Without it they land in the `default` stream. Metric streams
+        # are named per-metric (claude_code_*) and are unaffected by this header.
+        "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token},stream-name=claude_code",
     }
-    if traces_stream:
-        managed_env["OPENOBSERVE_TRACES_STREAM_NAME"] = traces_stream
 
     settings = {}
     if path.exists() and path.stat().st_size > 0:
@@ -71,51 +83,51 @@ def main() -> int:
             print(f"Existing settings file root is not an object: {path}", file=sys.stderr)
             return 1
 
-    # Merge env (only touches the four managed keys).
+    # Merge env: drop legacy keys, then add/update the managed keys. Anything
+    # the user set that we don't manage is preserved.
     env = settings.get("env")
     if not isinstance(env, dict):
         env = {}
+    for k in LEGACY_ENV_KEYS:
+        env.pop(k, None)
     env.update(managed_env)
     settings["env"] = env
 
-    # Merge hooks.Stop[*].hooks[*]. Match by filename suffix and update in
-    # place so changing the Python interpreter between installs doesn't
-    # create duplicate Stop hook entries.
+    # Migrate: strip the legacy Stop hook that pointed at openobserve_hooks.py
+    # (matched by filename suffix). Native telemetry replaces it entirely.
     hooks = settings.get("hooks")
-    if not isinstance(hooks, dict):
-        hooks = {}
-    stop_groups = hooks.get("Stop")
-    if not isinstance(stop_groups, list):
-        stop_groups = []
-
-    already = False
-    for grp in stop_groups:
-        if not isinstance(grp, dict):
-            continue
-        inner = grp.get("hooks")
-        if not isinstance(inner, list):
-            continue
-        for h in inner:
-            if not isinstance(h, dict) or h.get("type") != "command":
-                continue
-            cmd = h.get("command", "")
-            if isinstance(cmd, str) and cmd.endswith(HOOK_FILENAME):
-                # Update in place — this also normalizes the interpreter prefix.
-                h["command"] = hook_cmd
-                already = True
-                break
-        if already:
-            break
-
-    if not already:
-        stop_groups.append({
-            "hooks": [
-                {"type": "command", "command": hook_cmd}
-            ]
-        })
-
-    hooks["Stop"] = stop_groups
-    settings["hooks"] = hooks
+    if isinstance(hooks, dict):
+        stop_groups = hooks.get("Stop")
+        if isinstance(stop_groups, list):
+            new_groups = []
+            for grp in stop_groups:
+                if not isinstance(grp, dict):
+                    new_groups.append(grp)
+                    continue
+                inner = grp.get("hooks")
+                if not isinstance(inner, list):
+                    new_groups.append(grp)
+                    continue
+                new_inner = [
+                    h for h in inner
+                    if not (
+                        isinstance(h, dict)
+                        and h.get("type") == "command"
+                        and isinstance(h.get("command"), str)
+                        and h["command"].endswith(LEGACY_HOOK_FILENAME)
+                    )
+                ]
+                if new_inner:
+                    grp["hooks"] = new_inner
+                    new_groups.append(grp)
+            if new_groups:
+                hooks["Stop"] = new_groups
+            else:
+                hooks.pop("Stop", None)
+        if hooks:
+            settings["hooks"] = hooks
+        else:
+            settings.pop("hooks", None)
 
     # Atomic write.
     d = path.parent
