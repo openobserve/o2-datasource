@@ -60,6 +60,7 @@ fi
 O2_URL=""
 O2_ORG=""
 O2_TOKEN=""
+O2_STREAM="default"
 SCOPE="global"
 DRY_RUN=0
 
@@ -77,6 +78,10 @@ Required:
     --token=TOKEN         Auth token: "Basic <base64>" or "Bearer <token>"
 
 Optional:
+    --stream=NAME         OpenObserve stream for Claude Code logs + traces
+                          (a single stream-name header routes both).
+                          Default: default
+                          (--traces-stream is accepted as an alias)
     --scope=SCOPE         "global" (~/.claude/settings.json) or
                           "project" (./.claude/settings.local.json)
                           Default: global
@@ -98,11 +103,8 @@ for arg in "$@"; do
         --org=*)     O2_ORG="${arg#*=}" ;;
         --token=*)   O2_TOKEN="${arg#*=}" ;;
         --scope=*)   SCOPE="${arg#*=}" ;;
-        --traces-stream=*)
-            # Deprecated: native telemetry lands in OpenObserve-derived streams
-            # (claude_code logs/traces, claude_code_* metrics) — not settable here.
-            print_warning "--traces-stream is deprecated and ignored; native telemetry uses the claude_code streams."
-            ;;
+        --stream=*)        O2_STREAM="${arg#*=}" ;;
+        --traces-stream=*) O2_STREAM="${arg#*=}" ;;  # back-compat alias for --stream
         --quiet)     O2_QUIET=1 ;;
         --dry-run)   DRY_RUN=1 ;;
         --help|-h)   usage; exit 0 ;;
@@ -132,6 +134,9 @@ case "$SCOPE" in
         exit 1
         ;;
 esac
+
+# An explicit but empty --stream= falls back to the default stream.
+[ -z "$O2_STREAM" ] && O2_STREAM="default"
 
 if ! validate_url "$O2_URL"; then
     print_error "Invalid --url: must start with http:// or https://"
@@ -171,6 +176,7 @@ print_info "OpenObserve URL: $O2_URL"
 print_info "Org: $O2_ORG"
 print_info "OTLP endpoint: $O2_URL/api/$O2_ORG"
 print_info "Token: $(redact_secret "$O2_TOKEN")"
+print_info "Stream (logs+traces): $O2_STREAM"
 print_info "Scope: $SCOPE"
 print_info "Settings file: $SETTINGS_FILE"
 print_info "Signals: metrics + events + traces (beta)"
@@ -203,6 +209,7 @@ if ! printf '%s\n' \
         "$O2_URL" \
         "$O2_ORG" \
         "$O2_TOKEN" \
+        "$O2_STREAM" \
     | "$PY" "$MERGE_SRC"; then
     print_error "Settings merge failed."
     exit 1
@@ -220,10 +227,10 @@ Verify it's working:
 
   1. Start a NEW Claude Code session (env is read at session start) and run any
      trivial turn.
-  2. In OpenObserve, open Logs and select the 'claude_code' stream — you should
+  2. In OpenObserve, open Logs and select the '$O2_STREAM' stream — you should
      see events (user_prompt, api_request, tool_result, ...).
   3. Metrics land in the 'claude_code_*' streams; the per-turn span tree shows
-     up under Traces (service.name = claude-code).
+     up under Traces in the '$O2_STREAM' stream (service.name = claude-code).
 
 Uninstall:
 

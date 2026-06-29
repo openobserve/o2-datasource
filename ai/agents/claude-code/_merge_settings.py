@@ -10,6 +10,7 @@ Reads config from stdin — one value per line, in this order:
     2. OpenObserve base URL   e.g. https://api.openobserve.ai
     3. OpenObserve org        e.g. default
     4. Auth header value      e.g. "Basic <base64>" or "Bearer <token>"
+    5. Stream name (optional) e.g. claude_code  (blank/omitted -> default)
 
 Stdin is used (rather than env vars or argv) so the auth token never appears
 in `ps` output or any subprocess environment block.
@@ -46,6 +47,9 @@ def main() -> int:
         url = sys.stdin.readline().rstrip("\n")
         org = sys.stdin.readline().rstrip("\n")
         token = sys.stdin.readline().rstrip("\n")
+        # Optional 5th line. Blank or omitted (EOF -> "") falls back to the
+        # `default` stream so older callers and "just press enter" both work.
+        stream = sys.stdin.readline().rstrip("\n") or "default"
     except Exception as e:
         print(f"Failed to read config from stdin: {e}", file=sys.stderr)
         return 2
@@ -65,11 +69,13 @@ def main() -> int:
         "OTEL_TRACES_EXPORTER": "otlp",
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
-        # stream-name routes OpenObserve's OTLP logs + traces into the
-        # `claude_code` stream (what the dashboard and the card's detection
-        # query). Without it they land in the `default` stream. Metric streams
-        # are named per-metric (claude_code_*) and are unaffected by this header.
-        "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token},stream-name=claude_code",
+        # stream-name routes OpenObserve's OTLP logs + traces into the chosen
+        # stream (defaults to `default`; set a dedicated stream to isolate
+        # Claude Code's telemetry). One header covers logs AND traces; the
+        # card's detection still matches via service_name = 'claude-code'.
+        # Metric streams are named per-metric (claude_code_*) and are
+        # unaffected by this header.
+        "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization={token},stream-name={stream}",
     }
 
     settings = {}
