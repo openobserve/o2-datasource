@@ -17,9 +17,19 @@ card:
 # the events stream because it's on by default (traces are beta).
 detect:
   stream_type: logs
-  stream: claude_code
+  stream: default                # fallback; overridden by the stream_input value below
   # confirmed on ingest: Claude Code sets service_name = 'claude-code' on every signal
   filter: "service_name = 'claude-code'"
+
+# Renders a "Stream Name" text field. Its value feeds the install command's
+# {stream} placeholder AND the detection stream above, so what the installer
+# writes to and what the card listens on can never drift. A single stream-name
+# header routes both logs and traces for Claude Code's native OTLP exporter.
+stream_input:
+  label: Stream Name
+  default: default
+  placeholder: default
+  help: 'Stream for Claude Code logs & traces. Leave as "default" or set a dedicated stream for them.'
 
 doc_url: https://openobserve.ai/docs/integration/ai/claude-code-tracing/
 slack_url: https://short.openobserve.ai/community
@@ -35,6 +45,7 @@ steps:
         curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/claude-code/install.sh | bash -s -- \
           --url={url} \
           --org={org} \
+          --stream={stream} \
           --token="Basic {token}" \
           --scope=global
 
@@ -45,7 +56,7 @@ steps:
     detection_anchor: true
 
   - title: Check OpenObserve
-    description: "Open **Logs** and select the `claude_code` stream — you'll see events streaming in. Metrics land in `claude_code_*`; the per-turn span tree is under **Traces**."
+    description: "Open **Logs** and select the stream you set above (default `default`) — you'll see events streaming in. Metrics land in `claude_code_*`; the per-turn span tree is under **Traces** in that same stream."
     chip: { kind: logs, label: Logs }
     complete_on: detect
     pills:
