@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GovCloud - CloudWatch Logs subscription -> Kinesis Firehose -> OpenObserve HTTP endpoint. No S3 source.
+
+Parameters:
+  HttpEndpointName:
+    Type: String
+    Description: Name of the HTTP endpoint for Kinesis Firehose.
+  HttpEndpointUrl:
+    Type: String
+    Description: OpenObserve HTTP ingest URL (Firehose-compatible endpoint).
+  AccessKey:
+    Type: String
+    NoEcho: true
+    Description: Access key / token for the OpenObserve HTTP endpoint.
+  LogGroupName:
+    Type: String
+    Description: Existing CloudWatch Log Group to stream (e.g. CloudTrail/DefaultLogGroup).
+  FilterPattern:
+    Type: String
+    Default: ""
+    Description: Subscription filter pattern. Empty = all events.
+  S3BackupBucket:
+    Type: String
+    Description: Existing S3 bucket for Firehose FAILED-delivery backup only.
+
+Resources:
+
+  # ---------- Firehose role ----------
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: FirehoseAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}/*"
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:GetFunctionConfiguration
+                Resource: !GetAtt UnwrapLambda.Arn
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                Resource: "*"
+
+  # ---------- Transform Lambda role ----------
+  TransformLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_TransformRole-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TransformLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ---------- Firehose transform: unwrap CloudWatch envelope ----------
+  UnwrapLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "OpenObserve_CWLUnwrap-${AWS::StackName}"
+      Handler: index.handler
+      Runtime: python3.13
+      Role: !GetAtt TransformLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      RecursiveLoop: Terminate
+      Code:
+        ZipFile: |
+          import base64, gzip, json
+          from io import BytesIO
+
+          def handler(event, context):
+              out = []
+              for rec in event['records']:
+                  rid = rec['recordId']
+                  try:
+                      raw = base64.b64decode(rec['data'])
+                      with gzip.GzipFile(fileobj=BytesIO(raw)) as gz:
+                          payload = json.loads(gz.read().decode('utf-8'))
+
+                      # Firehose keepalive from CWL subscriptions
+                      if payload.get('messageType') == 'CONTROL_MESSAGE':
+                          out.append({'recordId': rid, 'result': 'Dropped'})
+                          continue
+
+                      if payload.get('messageType') != 'DATA_MESSAGE':
+                          out.append({'recordId': rid, 'result': 'ProcessingFailed'})
+                          continue
+
+                      owner = payload.get('owner')
+                      lg = payload.get('logGroup')
+                      ls = payload.get('logStream')
+
+                      lines = []
+                      for ev in payload.get('logEvents', []):
+                          msg = ev.get('message', '')
+                          try:
+                              body = json.loads(msg)   # CloudTrail events are JSON
+                          except (ValueError, TypeError):
+                              body = {'message': msg}
+                          if isinstance(body, dict):
+                              body.setdefault('owner', owner)
+                              body.setdefault('logGroup', lg)
+                              body.setdefault('logStream', ls)
+                              body.setdefault('timestamp', ev.get('timestamp'))
+                          lines.append(json.dumps(body))
+
+                      if not lines:
+                          out.append({'recordId': rid, 'result': 'Dropped'})
+                          continue
+
+                      data = ("\n".join(lines) + "\n").encode('utf-8')
+                      out.append({
+                          'recordId': rid,
+                          'result': 'Ok',
+                          'data': base64.b64encode(data).decode('utf-8')
+                      })
+                  except Exception as e:
+                      print(f"Failed record {rid}: {e}")
+                      out.append({'recordId': rid, 'result': 'ProcessingFailed'})
+
+              return {'records': out}
+
+  FirehoseInvokeUnwrapPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt UnwrapLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: firehose.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  # ---------- Firehose log group ----------
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve-${AWS::StackName}"
+      RetentionInDays: 14
+
+  FirehoseLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: DeliveryStreamLogs
+
+  # ---------- Firehose delivery stream ----------
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn: FirehoseLogStream
+    Properties:
+      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
+      DeliveryStreamType: DirectPut
+      HttpEndpointDestinationConfiguration:
+        EndpointConfiguration:
+          Url: !Ref HttpEndpointUrl
+          Name: !Ref HttpEndpointName
+          AccessKey: !Ref AccessKey
+        RequestConfiguration:
+          ContentEncoding: GZIP
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        RetryOptions:
+          DurationInSeconds: 300
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt UnwrapLambda.Arn
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: "1"
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: "60"
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          RoleARN: !GetAtt FirehoseRole.Arn
+          BucketARN: !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}"
+          Prefix: OpenObserve_Failed/
+          CompressionFormat: GZIP
+          BufferingHints:
+            IntervalInSeconds: 300
+            SizeInMBs: 5
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseLogGroup
+          LogStreamName: DeliveryStreamLogs
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+  # ---------- CloudWatch Logs -> Firehose role ----------
+  CWLtoFirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "OpenObserve_CWLtoFirehose-${AWS::StackName}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action: sts:AssumeRole
+            Condition:
+              StringLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
+      Policies:
+        - PolicyName: CWLtoFirehosePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                Resource: !GetAtt KinesisFirehose.Arn
+
+  # ---------- Subscription filter ----------
+  LogGroupSubscription:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt KinesisFirehose.Arn
+      RoleArn: !GetAtt CWLtoFirehoseRole.Arn
+
+Outputs:
+  KinesisFirehoseName:
+    Description: Firehose delivery stream name.
+    Value: !Ref KinesisFirehose
+  KinesisFirehoseArn:
+    Description: Firehose delivery stream ARN.
+    Value: !GetAtt KinesisFirehose.Arn
+  SubscribedLogGroup:
+    Description: CloudWatch Log Group being streamed.
+    Value: !Ref LogGroupName
+  TransformLambdaArn:
+    Description: ARN of the CloudWatch-envelope unwrap Lambda.
+    Value: !GetAtt UnwrapLambda.Arn
+  BackupBucketName:
+    Description: Bucket receiving FAILED deliveries only.
+    Value: !Ref S3BackupBucket
