@@ -97,7 +97,7 @@ Resources:
     Properties:
       FunctionName: !Sub "OpenObserve_CWLUnwrap-${AWS::StackName}"
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Role: !GetAtt TransformLambdaRole.Arn
       Timeout: 60
       MemorySize: 256
