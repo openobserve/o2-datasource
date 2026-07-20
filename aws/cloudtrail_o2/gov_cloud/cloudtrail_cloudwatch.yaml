@@ -94,6 +94,7 @@ Resources:
   # ---------- Firehose transform: unwrap CloudWatch envelope ----------
   UnwrapLambda:
     Type: AWS::Lambda::Function
+    DependsOn: TransformLambdaRole
     Properties:
       FunctionName: !Sub "OpenObserve_CWLUnwrap-${AWS::StackName}"
       Handler: index.handler
