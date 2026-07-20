@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: GovCloud - CloudWatch Logs subscription -> Kinesis Firehose -> OpenObserve HTTP endpoint. No S3 source.
+Description: CloudWatch Logs subscription -> Kinesis Firehose -> OpenObserve HTTP endpoint. GovCloud-compatible. No S3 source.
 
 Parameters:
   HttpEndpointName:
@@ -25,7 +25,7 @@ Parameters:
 
 Resources:
 
-  # ---------- Firehose role ----------
+  # IAM Role for Kinesis Firehose - mirrors the working template's FirehoseRole (no ExternalId condition)
   FirehoseRole:
     Type: AWS::IAM::Role
     Properties:
@@ -37,9 +37,6 @@ Resources:
             Principal:
               Service: firehose.amazonaws.com
             Action: sts:AssumeRole
-            Condition:
-              StringEquals:
-                sts:ExternalId: !Ref AWS::AccountId
       Policies:
         - PolicyName: FirehoseAccessPolicy
           PolicyDocument:
@@ -47,12 +44,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:AbortMultipartUpload
-                  - s3:GetBucketLocation
-                  - s3:GetObject
-                  - s3:ListBucket
-                  - s3:ListBucketMultipartUploads
                   - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}"
                   - !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}/*"
@@ -60,18 +54,19 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                   - lambda:GetFunctionConfiguration
-                Resource: !GetAtt UnwrapLambda.Arn
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
+                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                 Resource: "*"
 
-  # ---------- Transform Lambda role ----------
-  TransformLambdaRole:
+  # IAM Role for Lambda - identical shape to working template's LambdaExecutionRole
+  LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "OpenObserve_TransformRole-${AWS::StackName}-${AWS::Region}"
+      RoleName: !Sub "OpenObserve_LambdaRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -80,7 +75,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: TransformLambdaPolicy
+        - PolicyName: LambdaExecutionPolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -91,17 +86,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # ---------- Firehose transform: unwrap CloudWatch envelope ----------
+  # Lambda Function - same properties that deploy successfully in the working template
   UnwrapLambda:
     Type: AWS::Lambda::Function
-    DependsOn: TransformLambdaRole
     Properties:
       FunctionName: !Sub "OpenObserve_CWLUnwrap-${AWS::StackName}"
       Handler: index.handler
-      Runtime: python3.12
-      Role: !GetAtt TransformLambdaRole.Arn
+      Runtime: python3.13
+      Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 60
-      MemorySize: 256
       RecursiveLoop: Terminate
       Code:
         ZipFile: |
@@ -117,7 +110,6 @@ Resources:
                       with gzip.GzipFile(fileobj=BytesIO(raw)) as gz:
                           payload = json.loads(gz.read().decode('utf-8'))
 
-                      # Firehose keepalive from CWL subscriptions
                       if payload.get('messageType') == 'CONTROL_MESSAGE':
                           out.append({'recordId': rid, 'result': 'Dropped'})
                           continue
@@ -134,7 +126,7 @@ Resources:
                       for ev in payload.get('logEvents', []):
                           msg = ev.get('message', '')
                           try:
-                              body = json.loads(msg)   # CloudTrail events are JSON
+                              body = json.loads(msg)
                           except (ValueError, TypeError):
                               body = {'message': msg}
                           if isinstance(body, dict):
@@ -168,23 +160,9 @@ Resources:
       Principal: firehose.amazonaws.com
       SourceAccount: !Ref AWS::AccountId
 
-  # ---------- Firehose log group ----------
-  FirehoseLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve-${AWS::StackName}"
-      RetentionInDays: 14
-
-  FirehoseLogStream:
-    Type: AWS::Logs::LogStream
-    Properties:
-      LogGroupName: !Ref FirehoseLogGroup
-      LogStreamName: DeliveryStreamLogs
-
-  # ---------- Firehose delivery stream ----------
+  # Kinesis Firehose Delivery Stream - working template's Firehose plus the unwrap processor
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
-    DependsOn: FirehoseLogStream
     Properties:
       DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
       DeliveryStreamType: DirectPut
@@ -216,17 +194,13 @@ Resources:
           RoleARN: !GetAtt FirehoseRole.Arn
           BucketARN: !Sub "arn:${AWS::Partition}:s3:::${S3BackupBucket}"
           Prefix: OpenObserve_Failed/
-          CompressionFormat: GZIP
-          BufferingHints:
-            IntervalInSeconds: 300
-            SizeInMBs: 5
         CloudWatchLoggingOptions:
           Enabled: true
-          LogGroupName: !Ref FirehoseLogGroup
+          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_CloudTrail"
           LogStreamName: DeliveryStreamLogs
         RoleARN: !GetAtt FirehoseRole.Arn
 
-  # ---------- CloudWatch Logs -> Firehose role ----------
+  # CloudWatch Logs -> Firehose role
   CWLtoFirehoseRole:
     Type: AWS::IAM::Role
     Properties:
@@ -238,9 +212,6 @@ Resources:
             Principal:
               Service: !Sub "logs.${AWS::Region}.amazonaws.com"
             Action: sts:AssumeRole
-            Condition:
-              StringLike:
-                aws:SourceArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
       Policies:
         - PolicyName: CWLtoFirehosePolicy
           PolicyDocument:
@@ -252,7 +223,7 @@ Resources:
                   - firehose:PutRecordBatch
                 Resource: !GetAtt KinesisFirehose.Arn
 
-  # ---------- Subscription filter ----------
+  # Subscription filter
   LogGroupSubscription:
     Type: AWS::Logs::SubscriptionFilter
     Properties:
