@@ -21,7 +21,9 @@
 #     --location="Corp HQ" \
 #     [--region=us-east] \
 #     [--agent-name=corp-hq-agent-01] \
-#     [--image=public.ecr.aws/zinclabs/synthetic-o2-agent:latest] \
+#     [--version=v0.0.1] \                   # pin a release; default: latest
+#     [--image=ghcr.io/openobserve/synthetic-o2-agent:v0.0.1] \  # full override,
+#                                             # mutually exclusive with --version
 #     [--namespace=o2-synthetics]            # k8s only
 #
 # Platforms:
@@ -49,11 +51,13 @@ LOCATION=""
 LOCATION_ID=""
 REGION=""
 AGENT_NAME=""
-IMAGE="public.ecr.aws/zinclabs/synthetic-o2-agent:latest"
+IMAGE_REPO="ghcr.io/openobserve/synthetic-o2-agent"
+VERSION=""
+IMAGE=""
 NAMESPACE="o2-synthetics"
 LEASE_MAX=""
 
-usage() { sed -n '2,40p' "$0" 2>/dev/null || true; }
+usage() { sed -n '2,42p' "$0" 2>/dev/null || true; }
 
 fail() {
   echo "install.sh: error: $*" >&2
@@ -70,6 +74,7 @@ for arg in "$@"; do
     --location-id=*) LOCATION_ID="${arg#*=}" ;;
     --region=*)     REGION="${arg#*=}" ;;
     --agent-name=*) AGENT_NAME="${arg#*=}" ;;
+    --version=*)    VERSION="${arg#*=}" ;;
     --image=*)      IMAGE="${arg#*=}" ;;
     --namespace=*)  NAMESPACE="${arg#*=}" ;;
     --lease-max=*)  LEASE_MAX="${arg#*=}" ;;
@@ -88,6 +93,10 @@ fi
 if [ -n "$LOCATION" ] && [ -n "$LOCATION_ID" ]; then
   fail "--location and --location-id are mutually exclusive"
 fi
+if [ -n "$IMAGE" ] && [ -n "$VERSION" ]; then
+  fail "--image and --version are mutually exclusive"
+fi
+[ -n "$IMAGE" ] || IMAGE="${IMAGE_REPO}:${VERSION:-latest}"
 O2_URL="${O2_URL%/}"
 
 slugify() {
