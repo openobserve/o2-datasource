@@ -3,47 +3,46 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   Streams an existing CloudWatch Logs log group through Amazon Data Firehose
   to an OpenObserve HTTP endpoint. Includes a Lambda processor that unwraps
-  CloudWatch Logs subscription records. Compatible with AWS GovCloud.
+  CloudWatch Logs subscription records. AWS GovCloud compatible.
 
 Parameters:
 
   HttpEndpointName:
     Type: String
     Default: OpenObserve
-    Description: Display name for the OpenObserve HTTP endpoint.
+    Description: Friendly name for the OpenObserve HTTP endpoint.
 
   HttpEndpointUrl:
     Type: String
     Description: >
-      OpenObserve Firehose ingestion URL, for example:
+      OpenObserve Firehose URL, for example:
       https://openobserve.example.com/aws/default/cloudtrail/_kinesis_firehose
 
   AccessKey:
     Type: String
     NoEcho: true
-    Description: OpenObserve access key used by Amazon Data Firehose.
+    Description: OpenObserve Firehose access key.
 
   LogGroupName:
     Type: String
     Description: >
-      Name of the existing CloudWatch Logs log group containing CloudTrail
-      events.
+      Exact name of the existing CloudWatch Logs log group containing
+      CloudTrail events.
 
   FilterPattern:
     Type: String
     Default: ''
-    Description: CloudWatch Logs subscription filter. Empty sends all events.
+    Description: >
+      CloudWatch Logs subscription filter pattern. Leave empty to send
+      all events.
 
   S3BackupBucket:
     Type: String
     Description: >
-      Name of an existing S3 bucket used only for failed Firehose deliveries.
+      Name of an existing S3 bucket used for failed Firehose deliveries.
+      Enter only the bucket name.
 
 Resources:
-
-  ##########################################################################
-  # Lambda execution role
-  ##########################################################################
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -54,8 +53,7 @@ Resources:
           - Sid: LambdaAssumeRole
             Effect: Allow
             Principal:
-              Service:
-                - lambda.amazonaws.com
+              Service: lambda.amazonaws.com
             Action:
               - sts:AssumeRole
 
@@ -72,18 +70,14 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
-  ##########################################################################
-  # CloudWatch Logs unwrap Lambda
-  ##########################################################################
-
   UnwrapLambda:
     Type: AWS::Lambda::Function
     DependsOn:
       - LambdaExecutionRole
     Properties:
       Description: >
-        Unwraps gzip-compressed CloudWatch Logs subscription records and
-        returns newline-delimited JSON to Amazon Data Firehose.
+        Unwraps CloudWatch Logs subscription records and returns
+        newline-delimited JSON to Amazon Data Firehose.
 
       Runtime: python3.13
       Handler: index.handler
@@ -161,18 +155,22 @@ Resources:
                               "timestamp",
                               log_event.get("timestamp")
                           )
+
                           body.setdefault(
                               "cloudwatch_event_id",
                               log_event.get("id")
                           )
+
                           body.setdefault(
                               "aws_account_id",
                               owner
                           )
+
                           body.setdefault(
                               "cloudwatch_log_group",
                               log_group
                           )
+
                           body.setdefault(
                               "cloudwatch_log_stream",
                               log_stream
@@ -221,10 +219,6 @@ Resources:
                   "records": output_records
               }
 
-  ##########################################################################
-  # Firehose logging resources
-  ##########################################################################
-
   FirehoseLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -235,10 +229,6 @@ Resources:
     Properties:
       LogGroupName: !Ref FirehoseLogGroup
 
-  ##########################################################################
-  # Firehose execution role
-  ##########################################################################
-
   FirehoseRole:
     Type: AWS::IAM::Role
     Properties:
@@ -248,8 +238,7 @@ Resources:
           - Sid: FirehoseAssumeRole
             Effect: Allow
             Principal:
-              Service:
-                - firehose.amazonaws.com
+              Service: firehose.amazonaws.com
             Action:
               - sts:AssumeRole
 
@@ -269,8 +258,8 @@ Resources:
                   - s3:ListBucketMultipartUploads
                   - s3:PutObject
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::${S3BackupBucket}
-                  - !Sub arn:${AWS::Partition}:s3:::${S3BackupBucket}/*
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3BackupBucket}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3BackupBucket}/*'
 
               - Sid: InvokeTransformLambda
                 Effect: Allow
@@ -287,10 +276,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !GetAtt FirehoseLogStream.Arn
-
-  ##########################################################################
-  # Firehose delivery stream
-  ##########################################################################
 
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
@@ -339,21 +324,14 @@ Resources:
 
         S3Configuration:
           RoleARN: !GetAtt FirehoseRole.Arn
-          BucketARN: !Sub arn:${AWS::Partition}:s3:::${S3BackupBucket}
-          Prefix: openobserve-failed/
-          ErrorOutputPrefix: >
-            openobserve-errors/!{firehose:error-output-type}/
-            year=!{timestamp:yyyy}/month=!{timestamp:MM}/
-            day=!{timestamp:dd}/hour=!{timestamp:HH}/
+          BucketARN: !Sub 'arn:${AWS::Partition}:s3:::${S3BackupBucket}'
+          Prefix: 'openobserve-failed/'
+          ErrorOutputPrefix: 'openobserve-errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/'
 
         CloudWatchLoggingOptions:
           Enabled: true
           LogGroupName: !Ref FirehoseLogGroup
           LogStreamName: !Ref FirehoseLogStream
-
-  ##########################################################################
-  # CloudWatch Logs to Firehose role
-  ##########################################################################
 
   CloudWatchLogsToFirehoseRole:
     Type: AWS::IAM::Role
@@ -364,16 +342,12 @@ Resources:
           - Sid: CloudWatchLogsAssumeRole
             Effect: Allow
             Principal:
-              Service:
-                - !Sub logs.${AWS::Region}.amazonaws.com
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
             Action:
               - sts:AssumeRole
             Condition:
               StringLike:
-                aws:SourceArn:
-                  - !Sub >
-                    arn:${AWS::Partition}:logs:${AWS::Region}:
-                    ${AWS::AccountId}:*
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*'
 
       Policies:
         - PolicyName: CloudWatchLogsToFirehose
@@ -387,10 +361,6 @@ Resources:
                   - firehose:PutRecordBatch
                 Resource:
                   - !GetAtt KinesisFirehose.Arn
-
-  ##########################################################################
-  # CloudWatch Logs subscription
-  ##########################################################################
 
   LogGroupSubscription:
     Type: AWS::Logs::SubscriptionFilter
@@ -418,25 +388,25 @@ Outputs:
     Value: !Ref LogGroupName
 
   TransformLambdaName:
-    Description: Name generated for the transformation Lambda.
+    Description: Generated Lambda function name.
     Value: !Ref UnwrapLambda
 
   TransformLambdaArn:
-    Description: ARN of the transformation Lambda.
+    Description: Transformation Lambda ARN.
     Value: !GetAtt UnwrapLambda.Arn
 
   LambdaExecutionRoleArn:
-    Description: ARN of the generated Lambda execution role.
+    Description: Lambda execution role ARN.
     Value: !GetAtt LambdaExecutionRole.Arn
 
   FirehoseRoleArn:
-    Description: ARN of the generated Firehose execution role.
+    Description: Firehose execution role ARN.
     Value: !GetAtt FirehoseRole.Arn
 
   BackupBucketName:
-    Description: Existing bucket receiving failed deliveries.
+    Description: S3 backup bucket name.
     Value: !Ref S3BackupBucket
 
   FirehoseLogGroupName:
-    Description: CloudWatch log group containing Firehose delivery errors.
+    Description: Firehose delivery error log group.
     Value: !Ref FirehoseLogGroup
