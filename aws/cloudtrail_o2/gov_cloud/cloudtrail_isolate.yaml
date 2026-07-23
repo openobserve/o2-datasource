@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   Streams an existing CloudWatch Logs log group through Amazon Data Firehose
-  to an OpenObserve HTTP endpoint. Includes a Lambda processor that unwraps
-  CloudWatch Logs subscription records. AWS GovCloud compatible.
+  to an OpenObserve HTTP endpoint. A Lambda processor unwraps the compressed
+  CloudWatch Logs subscription envelope into newline-delimited JSON.
+  Compatible with AWS GovCloud.
 
 Parameters:
 
@@ -15,7 +16,7 @@ Parameters:
   HttpEndpointUrl:
     Type: String
     Description: >
-      OpenObserve Firehose URL, for example:
+      OpenObserve Firehose endpoint, for example:
       https://openobserve.example.com/aws/default/cloudtrail/_kinesis_firehose
 
   AccessKey:
@@ -26,21 +27,21 @@ Parameters:
   LogGroupName:
     Type: String
     Description: >
-      Exact name of the existing CloudWatch Logs log group containing
-      CloudTrail events.
+      Exact name of the existing CloudWatch Logs log group.
+      Enter the log group name, not its ARN.
 
   FilterPattern:
     Type: String
     Default: ''
     Description: >
-      CloudWatch Logs subscription filter pattern. Leave empty to send
-      all events.
+      CloudWatch Logs subscription filter pattern.
+      Leave empty to forward all events.
 
   S3BackupBucket:
     Type: String
     Description: >
       Name of an existing S3 bucket used for failed Firehose deliveries.
-      Enter only the bucket name.
+      Enter only the bucket name, not an ARN or s3:// URL.
 
 Resources:
 
@@ -78,7 +79,6 @@ Resources:
       Description: >
         Unwraps CloudWatch Logs subscription records and returns
         newline-delimited JSON to Amazon Data Firehose.
-
       Runtime: python3.13
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -275,7 +275,10 @@ Resources:
                 Action:
                   - logs:PutLogEvents
                 Resource:
-                  - !GetAtt FirehoseLogStream.Arn
+                  - !Sub
+                    - 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroup}:log-stream:${LogStream}'
+                    - LogGroup: !Ref FirehoseLogGroup
+                      LogStream: !Ref FirehoseLogStream
 
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
@@ -388,7 +391,7 @@ Outputs:
     Value: !Ref LogGroupName
 
   TransformLambdaName:
-    Description: Generated Lambda function name.
+    Description: Generated transformation Lambda name.
     Value: !Ref UnwrapLambda
 
   TransformLambdaArn:
@@ -404,9 +407,13 @@ Outputs:
     Value: !GetAtt FirehoseRole.Arn
 
   BackupBucketName:
-    Description: S3 backup bucket name.
+    Description: S3 bucket receiving failed deliveries.
     Value: !Ref S3BackupBucket
 
   FirehoseLogGroupName:
-    Description: Firehose delivery error log group.
+    Description: Log group containing Firehose delivery errors.
     Value: !Ref FirehoseLogGroup
+
+  FirehoseLogStreamName:
+    Description: Log stream containing Firehose delivery errors.
+    Value: !Ref FirehoseLogStream
