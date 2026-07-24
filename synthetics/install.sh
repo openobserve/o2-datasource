@@ -130,6 +130,9 @@ if [ -z "$IMAGE" ]; then
     IMAGE="${IMAGE_REPO}:${VERSION:-latest}"
   fi
 fi
+# The browser probe runs Chromium — needs far more memory than the static Go
+# net agent (512Mi OOM-kills Chromium mid-check).
+if [ "$TYPE" = "browser" ]; then MEM_LIMIT="2Gi"; else MEM_LIMIT="512Mi"; fi
 O2_URL="${O2_URL%/}"
 
 # One host-owned directory for every agent's config (docker + linux; k8s uses
@@ -268,6 +271,16 @@ spec:
       labels:
         app: $deploy_name
     spec:
+      # readOnlyRootFilesystem (below) makes the whole fs read-only, but the
+      # browser probe (Playwright) MUST write scratch to /tmp (mkdtemp for
+      # browser artifacts) — without this it fails to launch with
+      # "EROFS: read-only file system, mkdtemp '/tmp/playwright-artifacts-…'".
+      # fsGroup makes the emptyDir writable by the non-root runAsUser.
+      securityContext:
+        fsGroup: 65532
+      volumes:
+      - name: tmp
+        emptyDir: {}
       containers:
       - name: agent
         image: $IMAGE
@@ -291,7 +304,10 @@ $loc_env$region_env$lease_env
             cpu: 100m
             memory: 128Mi
           limits:
-            memory: 512Mi
+            memory: $MEM_LIMIT
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
