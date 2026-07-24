@@ -22,6 +22,8 @@
 #     --org=my-org \
 #     --token=o2syn_xxx \
 #     --location="Corp HQ" \
+#     [--type=browser] \                      # protocol (default) | browser;
+#                                             # browser selects the Playwright image
 #     [--region=us-east] \
 #     [--agent-name=corp-hq-agent-01] \
 #     [--version=v0.0.1] \                   # pin a release; default: latest
@@ -63,6 +65,9 @@ LOCATION_ID=""
 REGION=""
 AGENT_NAME=""
 IMAGE_REPO="ghcr.io/openobserve/synthetic-o2-agent"
+# Browser checks run a separate Node/Playwright image; --type=browser selects it.
+BROWSER_IMAGE_REPO="ghcr.io/openobserve/synthetics-browser-probe"
+TYPE="protocol"
 VERSION=""
 IMAGE=""
 NAMESPACE="o2-synthetics"
@@ -93,6 +98,7 @@ for arg in "$@"; do
     --agent-name=*) AGENT_NAME="${arg#*=}" ;;
     --version=*)    VERSION="${arg#*=}" ;;
     --image=*)      IMAGE="${arg#*=}" ;;
+    --type=*)       TYPE="${arg#*=}" ;;
     --namespace=*)  NAMESPACE="${arg#*=}" ;;
     --lease-max=*)  LEASE_MAX="${arg#*=}" ;;
     --state-dir=*)  STATE_DIR="${arg#*=}" ;;
@@ -114,7 +120,16 @@ fi
 if [ -n "$IMAGE" ] && [ -n "$VERSION" ]; then
   fail "--image and --version are mutually exclusive"
 fi
-[ -n "$IMAGE" ] || IMAGE="${IMAGE_REPO}:${VERSION:-latest}"
+case "$TYPE" in protocol|browser) ;; *) fail "--type must be 'protocol' (default) or 'browser'" ;; esac
+# Default image depends on the agent type — browser checks need the Playwright
+# image, protocol checks the Go agent. An explicit --image overrides both.
+if [ -z "$IMAGE" ]; then
+  if [ "$TYPE" = "browser" ]; then
+    IMAGE="${BROWSER_IMAGE_REPO}:${VERSION:-latest}"
+  else
+    IMAGE="${IMAGE_REPO}:${VERSION:-latest}"
+  fi
+fi
 O2_URL="${O2_URL%/}"
 
 # One host-owned directory for every agent's config (docker + linux; k8s uses
