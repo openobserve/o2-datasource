@@ -11,8 +11,10 @@
   binary is the (private) synthetic-o2-agent repo; this file is mirrored here
   because it has to be fetchable without auth, same reason install.sh and
   other OpenObserve component installers live in this repo (see k8s/install.sh).
-  Release binaries (see scripts/build-release-binaries.sh in the source repo)
-  are published here too, same reason.
+  Release binaries are published by the source repo's release workflow to the
+  public downloads bucket (the website's Downloads backend):
+  https://downloads.openobserve.ai/releases/synthetic-o2-agent/<version>/
+  with a `latest` marker file alongside.
 
   Config is written once as a flat KEY=VALUE file under %ProgramData%
   (%ProgramData%\OpenObserve\synthetics-agent\<service>.env) — the service
@@ -38,7 +40,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$BinaryReleasesRepo = "openobserve/o2-datasource"
+$DownloadsBase = "https://downloads.openobserve.ai/releases/synthetic-o2-agent"
 $BinaryName = "synthetic-o2-agent"
 
 function Fail($msg) {
@@ -93,25 +95,25 @@ $BinPath = "$InstallDir\$BinaryName.exe"
 $ConfigDir = "$env:ProgramData\OpenObserve\synthetics-agent"
 $ConfigPath = "$ConfigDir\$ServiceName.env"
 
-function Resolve-AgentTag {
+function Resolve-AgentVersion {
   if (-not [string]::IsNullOrEmpty($Version)) {
-    return "synthetics-agent-$Version"
+    return $Version
   }
-  # Not GitHub's generic /releases/latest — o2-datasource may host other
-  # products' releases too, so "latest" there isn't necessarily ours.
-  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$BinaryReleasesRepo/releases"
-  $tag = $releases | Where-Object { $_.tag_name -like "synthetics-agent-v*" } | Select-Object -First 1 -ExpandProperty tag_name
-  if ([string]::IsNullOrEmpty($tag)) {
-    Fail "could not resolve a synthetics-agent release tag (pass -Version to pin one explicitly)"
+  # The downloads bucket's `latest` marker: a one-line vX.Y.Z file the release
+  # workflow uploads only after every binary of that version is in place. One
+  # anonymous request, no GitHub API involved.
+  $ver = (Invoke-RestMethod -Uri "$DownloadsBase/latest").ToString().Trim()
+  if ([string]::IsNullOrEmpty($ver)) {
+    Fail "could not resolve the latest agent version from $DownloadsBase/latest (pass -Version to pin one explicitly)"
   }
-  return $tag
+  return $ver
 }
 
-$tag = Resolve-AgentTag
+$ver = Resolve-AgentVersion
 $asset = "$BinaryName-windows-amd64.exe"
-$baseUrl = "https://github.com/$BinaryReleasesRepo/releases/download/$tag"
+$baseUrl = "$DownloadsBase/$ver"
 
-Write-Host "==> Downloading $asset ($tag)"
+Write-Host "==> Downloading $asset ($ver)"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $tmp = Join-Path $env:TEMP "$BinaryName-$([guid]::NewGuid()).exe"
 Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile $tmp
@@ -127,10 +129,10 @@ try {
       Fail "checksum verification failed for $asset"
     }
   } else {
-    Write-Host "==> No checksum asset published for $tag; skipping verification"
+    Write-Host "==> No checksum file published for $ver; skipping verification"
   }
 } catch {
-  Write-Host "==> No checksum asset published for $tag; skipping verification"
+  Write-Host "==> No checksum file published for $ver; skipping verification"
 }
 
 # Idempotent re-run, same as install.sh's docker rm -f / systemd unit rewrite.
