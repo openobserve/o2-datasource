@@ -5,8 +5,10 @@
 # synthetic-o2-agent repo; this script is mirrored here because it has to be
 # fetchable without auth, same reason install scripts for other OpenObserve
 # components live in this repo (see k8s/install.sh). Release binaries for
-# linux/Windows are published here too (GitHub Releases, tagged
-# synthetics-agent-vX.Y.Z), same reason.
+# linux/Windows are published by the source repo's release workflow to the
+# public downloads bucket (the website's Downloads backend):
+#   https://downloads.openobserve.ai/releases/synthetic-o2-agent/<version>/
+# with a `latest` marker file alongside.
 #
 # Composed and copy-pasted from the OpenObserve UI (Synthetics → set up a
 # private agent). The agent is outbound-only: it long-polls the o2 Job API for
@@ -74,9 +76,9 @@ NAMESPACE="o2-synthetics"
 LEASE_MAX=""
 STATE_DIR=""
 
-# Where the linux (and install.ps1's Windows) binary releases are published.
-# Not this repo — it's private, see header comment above.
-BINARY_RELEASES_REPO="openobserve/o2-datasource"
+# Where the linux (and install.ps1's Windows) binaries are published by the
+# source repo's release workflow — see header comment above.
+DOWNLOADS_BASE="https://downloads.openobserve.ai/releases/synthetic-o2-agent"
 BINARY_NAME="synthetic-o2-agent"
 
 usage() { sed -n '2,54p' "$0" 2>/dev/null || true; }
@@ -326,19 +328,16 @@ agent_arch() {
   esac
 }
 
-# Resolves the newest synthetics-agent-vX.Y.Z release tag on the public
-# binary-releases repo, or synthetics-agent-$VERSION when --version is
-# pinned. Not GitHub's generic /releases/latest — that repo may host other
-# products' releases too, so "latest" there isn't necessarily ours.
-resolve_agent_tag() {
+# Resolves the newest published version from the downloads bucket's `latest`
+# marker (a one-line vX.Y.Z file the release workflow uploads only after every
+# binary of that version is in place), or $VERSION when --version is pinned.
+# One anonymous curl, no GitHub API involved.
+resolve_agent_version() {
   if [ -n "$VERSION" ]; then
-    echo "synthetics-agent-${VERSION}"
+    echo "$VERSION"
     return
   fi
-  curl -fsSL "https://api.github.com/repos/${BINARY_RELEASES_REPO}/releases" \
-    | grep -o '"tag_name": *"synthetics-agent-v[^"]*"' \
-    | head -1 \
-    | sed -E 's/.*"(synthetics-agent-v[^"]*)".*/\1/'
+  curl -fsSL "${DOWNLOADS_BASE}/latest" | tr -d '[:space:]'
 }
 
 install_linux() {
@@ -348,16 +347,16 @@ install_linux() {
 
   write_config_file
   arch="$(agent_arch)"
-  tag="$(resolve_agent_tag)"
-  [ -n "$tag" ] || fail "could not resolve a synthetics-agent release tag (pass --version to pin one explicitly)"
+  ver="$(resolve_agent_version)"
+  [ -n "$ver" ] || fail "could not resolve the latest agent version from ${DOWNLOADS_BASE}/latest (pass --version to pin one explicitly)"
 
   asset="${BINARY_NAME}-linux-${arch}"
-  base_url="https://github.com/${BINARY_RELEASES_REPO}/releases/download/${tag}"
+  base_url="${DOWNLOADS_BASE}/${ver}"
   bin_path="/usr/local/bin/${BINARY_NAME}"
   unit_name="$CONTAINER_NAME.service"
   unit_path="/etc/systemd/system/$unit_name"
 
-  echo "==> Downloading ${asset} (${tag})"
+  echo "==> Downloading ${asset} (${ver})"
   tmp="$(mktemp)"
   trap 'rm -f "$tmp"' EXIT
   curl -fsSL -o "$tmp" "${base_url}/${asset}" || fail "download failed: ${base_url}/${asset}"
@@ -368,7 +367,7 @@ install_linux() {
       || fail "checksum verification failed for ${asset}"
     rm -f "${tmp}.sha256"
   else
-    echo "==> No checksum asset published for ${tag}; skipping verification"
+    echo "==> No checksum file published for ${ver}; skipping verification"
   fi
 
   install -m 755 "$tmp" "$bin_path"
