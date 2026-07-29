@@ -92,10 +92,25 @@
       ]
     },
     {
+      "slug": "github-copilot",
+      "name": "GitHub Copilot",
+      "category": "popular",
+      "order": 8,
+      "docURL": "https://openobserve.ai/docs/integration/ai/github-copilot-tracing/",
+      "keywords": [
+        "github",
+        "copilot",
+        "cli",
+        "vscode",
+        "agent",
+        "tracing"
+      ]
+    },
+    {
       "slug": "claude-agent-sdk",
       "name": "Claude Agent SDK",
       "category": "popular",
-      "order": 8,
+      "order": 9,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/claude-agent-sdk/",
       "keywords": [
         "claude",
@@ -108,7 +123,7 @@
       "slug": "langchain",
       "name": "LangChain",
       "category": "popular",
-      "order": 9,
+      "order": 10,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/langchain/",
       "keywords": [
         "langchain",
@@ -121,7 +136,7 @@
       "slug": "crewai",
       "name": "CrewAI",
       "category": "popular",
-      "order": 10,
+      "order": 11,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/crewai/",
       "keywords": [
         "crewai",
@@ -133,7 +148,7 @@
       "slug": "google-adk",
       "name": "Google ADK",
       "category": "popular",
-      "order": 11,
+      "order": 12,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/google-adk/",
       "keywords": [
         "google",
@@ -145,7 +160,7 @@
       "slug": "openai-agents",
       "name": "OpenAI Agents",
       "category": "popular",
-      "order": 12,
+      "order": 13,
       "docURL": "https://openobserve.ai/docs/integration/ai/frameworks/openai-agents/",
       "keywords": [
         "openai",
@@ -157,7 +172,7 @@
       "slug": "openrouter",
       "name": "OpenRouter",
       "category": "popular",
-      "order": 13,
+      "order": 14,
       "docURL": "https://openobserve.ai/docs/integration/ai/gateways/openrouter/",
       "keywords": [
         "openrouter",
@@ -169,7 +184,7 @@
       "slug": "litellm",
       "name": "LiteLLM",
       "category": "popular",
-      "order": 14,
+      "order": 15,
       "docURL": "https://openobserve.ai/docs/integration/ai/gateways/litellm-proxy/",
       "keywords": [
         "litellm",
@@ -548,10 +563,25 @@
       ]
     },
     {
+      "slug": "amazon-bedrock",
+      "name": "Amazon Bedrock",
+      "category": "model-providers",
+      "order": 1,
+      "docURL": "https://openobserve.ai/docs/integration/ai/providers/amazon-bedrock/",
+      "keywords": [
+        "amazon",
+        "bedrock",
+        "aws",
+        "nova",
+        "converse",
+        "model provider"
+      ]
+    },
+    {
       "slug": "anthropic-jsts",
       "name": "Anthropic (JS/TS)",
       "category": "model-providers",
-      "order": 1,
+      "order": 2,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/anthropic-js/",
       "keywords": [
         "anthropic",
@@ -565,7 +595,7 @@
       "slug": "byteplus",
       "name": "BytePlus",
       "category": "model-providers",
-      "order": 2,
+      "order": 3,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/byteplus/",
       "keywords": [
         "byteplus",
@@ -577,7 +607,7 @@
       "slug": "cerebras",
       "name": "Cerebras",
       "category": "model-providers",
-      "order": 3,
+      "order": 4,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/cerebras/",
       "keywords": [
         "cerebras",
@@ -589,7 +619,7 @@
       "slug": "cohere",
       "name": "Cohere",
       "category": "model-providers",
-      "order": 4,
+      "order": 5,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/cohere/",
       "keywords": [
         "cohere",
@@ -601,7 +631,7 @@
       "slug": "cometapi",
       "name": "CometAPI",
       "category": "model-providers",
-      "order": 5,
+      "order": 6,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/cometapi/",
       "keywords": [
         "cometapi",
@@ -613,7 +643,7 @@
       "slug": "databricks",
       "name": "Databricks",
       "category": "model-providers",
-      "order": 6,
+      "order": 7,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/databricks/",
       "keywords": [
         "databricks",
@@ -625,7 +655,7 @@
       "slug": "deepseek",
       "name": "DeepSeek",
       "category": "model-providers",
-      "order": 7,
+      "order": 8,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/deepseek/",
       "keywords": [
         "deepseek",
@@ -638,7 +668,7 @@
       "slug": "fireworks",
       "name": "Fireworks AI",
       "category": "model-providers",
-      "order": 8,
+      "order": 9,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/fireworks/",
       "keywords": [
         "fireworks",
@@ -651,7 +681,7 @@
       "slug": "groq",
       "name": "Groq",
       "category": "model-providers",
-      "order": 9,
+      "order": 10,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/groq/",
       "keywords": [
         "groq",
@@ -664,7 +694,7 @@
       "slug": "huggingface",
       "name": "Hugging Face",
       "category": "model-providers",
-      "order": 10,
+      "order": 11,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/huggingface/",
       "keywords": [
         "huggingface",
@@ -678,7 +708,7 @@
       "slug": "mistral",
       "name": "Mistral",
       "category": "model-providers",
-      "order": 11,
+      "order": 12,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/mistral/",
       "keywords": [
         "mistral",
@@ -690,7 +720,7 @@
       "slug": "novita",
       "name": "Novita AI",
       "category": "model-providers",
-      "order": 12,
+      "order": 13,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/novita/",
       "keywords": [
         "novita",
@@ -701,7 +731,7 @@
       "slug": "ollama",
       "name": "Ollama",
       "category": "model-providers",
-      "order": 13,
+      "order": 14,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/ollama/",
       "keywords": [
         "ollama",
@@ -714,7 +744,7 @@
       "slug": "openai-jsts",
       "name": "OpenAI (JS/TS)",
       "category": "model-providers",
-      "order": 14,
+      "order": 15,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/openai-js/",
       "keywords": [
         "openai",
@@ -728,7 +758,7 @@
       "slug": "openai-assistants",
       "name": "OpenAI Assistants API",
       "category": "model-providers",
-      "order": 15,
+      "order": 16,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/openai-assistants/",
       "keywords": [
         "openai",
@@ -741,7 +771,7 @@
       "slug": "together-ai",
       "name": "Together AI",
       "category": "model-providers",
-      "order": 16,
+      "order": 17,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/together-ai/",
       "keywords": [
         "together",
@@ -754,7 +784,7 @@
       "slug": "vllm",
       "name": "vLLM",
       "category": "model-providers",
-      "order": 17,
+      "order": 18,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/vllm/",
       "keywords": [
         "vllm",
@@ -767,7 +797,7 @@
       "slug": "xai-grok",
       "name": "xAI Grok",
       "category": "model-providers",
-      "order": 18,
+      "order": 19,
       "docURL": "https://openobserve.ai/docs/integration/ai/providers/xai-grok/",
       "keywords": [
         "xai",
