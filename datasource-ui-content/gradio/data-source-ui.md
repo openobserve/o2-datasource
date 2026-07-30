@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Gradio
+  logo: logo.svg
   tagline: "Trace Gradio chat and prediction calls with nested LLM spans."
   runtime: Python 3.8+
   setup_time: ~3 min

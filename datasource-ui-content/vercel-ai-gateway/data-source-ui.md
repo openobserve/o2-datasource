@@ -3,6 +3,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Vercel AI Gateway
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace every LLM call routed through the Vercel AI Gateway: model, tokens, routing, and cost."
   runtime: Python 3.8+
   setup_time: ~3 min

@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Hugging Face
+  logo: logo.svg
   tagline: "Trace Hugging Face Inference API calls: token usage, latency, and model metadata."
   runtime: Python 3.8+
   setup_time: ~3 min

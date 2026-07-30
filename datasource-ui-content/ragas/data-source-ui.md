@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Ragas
+  logo: logo.png
   tagline: "Trace Ragas RAG evaluations: scores, latency, and per-run metadata."
   runtime: Python 3.9+
   setup_time: ~3 min

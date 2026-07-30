@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Spring AI
+  logo: logo.svg
   tagline: "Trace Spring AI ChatClient calls: model, token usage, and request params."
   runtime: Java 17+ / Maven
   setup_time: ~5 min

@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Exa
+  logo: logo.svg
   tagline: "Trace Exa semantic search calls: query text, result counts, and latency."
   runtime: Python 3.8+
   setup_time: ~3 min

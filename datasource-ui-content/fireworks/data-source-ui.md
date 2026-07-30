@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Fireworks AI
+  logo: logo.svg
   tagline: "Trace Fireworks AI inference calls: token usage, latency, cache reads, and model metadata."
   runtime: Python 3.9+
   setup_time: ~3 min

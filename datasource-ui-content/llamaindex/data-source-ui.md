@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LlamaIndex
+  logo: logo.svg
   tagline: "Trace LlamaIndex query, retrieve, and LLM spans for every pipeline run with token usage and cost."
   runtime: Python 3.9+
   setup_time: ~3 min

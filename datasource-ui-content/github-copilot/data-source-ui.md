@@ -5,6 +5,8 @@
 # no code changes.
 card:
   name: GitHub Copilot
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: Stream Copilot agent traces, metrics, and events to OpenObserve — no code changes.
   runtime: CLI agent
   setup_time: ~2 min

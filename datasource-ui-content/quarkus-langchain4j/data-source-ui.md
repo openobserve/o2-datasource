@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Quarkus LangChain4j
+  logo: logo.svg
   tagline: "Trace Quarkus AI service calls: token usage, cost, prompts, and model metadata."
   runtime: Java 17+ / Maven
   setup_time: ~5 min

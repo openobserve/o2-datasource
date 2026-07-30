@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Promptfoo
+  logo: logo.png
   tagline: "Trace Promptfoo eval cases: prompt, pass/fail, and token usage with nested LLM spans."
   runtime: Python 3.8+
   setup_time: ~3 min

@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Semantic Kernel
+  logo: logo.svg
   tagline: "Trace Semantic Kernel LLM calls, function invocations, and planner steps."
   runtime: Python 3.10+
   setup_time: ~3 min

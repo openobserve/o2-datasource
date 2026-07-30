@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LangGraph
+  logo: logo.svg
   tagline: "Trace LangGraph graph executions, node transitions, and LLM calls with token usage and cost."
   runtime: Python 3.8+
   setup_time: ~3 min

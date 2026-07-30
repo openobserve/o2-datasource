@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Cognee
+  logo: logo.png
   tagline: "Trace Cognee knowledge graph ingest, cognify, and search operations."
   runtime: Python 3.9+
   setup_time: ~3 min

@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: xAI Grok
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace xAI Grok inference calls: token usage, latency, reasoning tokens, and model metadata."
   runtime: Python 3.9+
   setup_time: ~3 min

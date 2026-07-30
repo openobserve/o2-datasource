@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LiveKit
+  logo: logo.svg
   tagline: "Trace LiveKit Agents LLM calls with latency, token usage, input messages, and output content."
   runtime: Python 3.10+
   setup_time: ~4 min

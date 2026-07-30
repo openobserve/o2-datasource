@@ -3,6 +3,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: PostHog
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace LLM generations in OpenObserve while capturing $ai_generation events in PostHog."
   runtime: Python 3.8+
   setup_time: ~3 min

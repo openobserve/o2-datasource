@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Vapi
+  logo: logo.svg
   tagline: "Trace Vapi voice AI API calls: assistant metadata, request paths, status, and latency."
   runtime: Python 3.8+
   setup_time: ~3 min

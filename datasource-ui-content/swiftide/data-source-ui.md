@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Swiftide
+  logo: logo.png
   tagline: "Trace Swiftide agent runs: latency, model name, input, and error details."
   runtime: Rust 1.75+
   setup_time: ~5 min

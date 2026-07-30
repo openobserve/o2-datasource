@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Haystack
+  logo: logo.svg
   tagline: "Trace Haystack v2 pipeline runs, component executions, and LLM calls with token usage and cost."
   runtime: Python 3.10+
   setup_time: ~3 min

@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Trubrics
+  logo: logo.png
   tagline: "Trace LLM generations in OpenObserve while recording user feedback in Trubrics."
   runtime: Python 3.8+
   setup_time: ~3 min

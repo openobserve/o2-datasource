@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Pydantic AI
+  logo: logo.svg
   tagline: "Trace Pydantic AI agent runs, tool calls, and structured-output extractions."
   runtime: Python 3.9+
   setup_time: ~3 min

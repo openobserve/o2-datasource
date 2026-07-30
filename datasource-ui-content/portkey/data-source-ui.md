@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Portkey
+  logo: logo.png
   tagline: "Trace every request routed through the Portkey gateway: model, token usage, and latency."
   runtime: Python 3.8+
   setup_time: ~3 min

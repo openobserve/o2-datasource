@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Cohere
+  logo: logo.svg
   tagline: "Trace Cohere chat calls via manual spans: token usage, latency, prompt and response."
   runtime: Python 3.8+
   setup_time: ~3 min

@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Instructor
+  logo: logo.png
   tagline: "Trace Instructor structured-output extractions, retries, token usage, and the underlying LLM calls."
   runtime: Python 3.9+
   setup_time: ~3 min

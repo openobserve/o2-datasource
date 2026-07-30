@@ -3,6 +3,8 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: mcp-use
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace mcp-use agent runs: prompt input, MCP server, result length, and errors."
   runtime: Python 3.11+
   setup_time: ~4 min

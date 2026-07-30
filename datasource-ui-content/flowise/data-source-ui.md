@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Flowise
+  logo: logo.png
   tagline: "Trace Flowise chatflow predictions: chatflow ID, question, response length, and latency."
   runtime: Python 3.8+
   setup_time: ~5 min

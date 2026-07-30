@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Zapier
+  logo: logo.svg
   tagline: "Trace Zapier webhook triggers: payload metadata, status codes, and latency."
   runtime: Python 3.8+
   setup_time: ~4 min

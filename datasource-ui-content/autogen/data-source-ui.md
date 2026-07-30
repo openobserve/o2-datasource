@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: AutoGen
+  logo: logo.svg
   tagline: "Trace AutoGen multi-agent conversations, agent turns, LLM calls, and tool executions."
   runtime: Python 3.9+
   setup_time: ~3 min

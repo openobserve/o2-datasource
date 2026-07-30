@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: n8n
+  logo: logo.svg
   tagline: "Trace n8n webhook triggers: webhook path, payload keys, status code, and latency."
   runtime: Python 3.8+
   setup_time: ~4 min

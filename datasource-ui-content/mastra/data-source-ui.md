@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Mastra
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Mastra agent runs with latency, token usage, model name, and finish reason from TypeScript."
   runtime: Node.js 18+
   setup_time: ~4 min

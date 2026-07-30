@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Groq
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Groq inference calls: token usage, latency, and model metadata."
   runtime: Python 3.9+
   setup_time: ~3 min

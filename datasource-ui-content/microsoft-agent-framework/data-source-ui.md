@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Microsoft Agent Framework
+  logo: logo.svg
   tagline: "Trace Microsoft Agent Framework runs with latency, input metadata, output size, and error details."
   runtime: Python 3.10+
   setup_time: ~3 min

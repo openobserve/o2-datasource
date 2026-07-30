@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Firecrawl
+  logo: logo.svg
   tagline: "Trace Firecrawl scrape and crawl calls: target URL, content length, and latency."
   runtime: Python 3.8+
   setup_time: ~3 min

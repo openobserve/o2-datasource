@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: CometAPI
+  logo: logo.svg
   tagline: "Trace CometAPI gateway calls across 500+ models: token usage, latency, cost, and model name."
   runtime: Python 3.8+
   setup_time: ~3 min

@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: LibreChat
+  logo: logo.png
   tagline: "Trace LibreChat API messages: endpoint, conversation ID, completion, and latency."
   runtime: Python 3.8+
   setup_time: ~5 min

@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: SmolAgents
+  logo: logo.svg
   tagline: "Trace SmolAgents runs, tool executions, code steps, and LLM calls."
   runtime: Python 3.10+
   setup_time: ~3 min

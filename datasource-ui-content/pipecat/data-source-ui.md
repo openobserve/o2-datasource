@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Pipecat
+  logo: logo.png
   tagline: "Trace Pipecat voice pipeline turns: per-turn LLM spans, token usage, and latency."
   runtime: Python 3.10+
   setup_time: ~3 min

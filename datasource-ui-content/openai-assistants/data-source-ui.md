@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: OpenAI Assistants API
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace OpenAI Assistants workflows: thread creation, run execution, message handling, and tokens."
   runtime: Python 3.8+
   setup_time: ~3 min

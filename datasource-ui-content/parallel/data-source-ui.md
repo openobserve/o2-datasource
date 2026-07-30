@@ -3,6 +3,8 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Parallel
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Parallel AI task runs: run ID, processor tier, status, and latency."
   runtime: Python 3.8+
   setup_time: ~3 min
