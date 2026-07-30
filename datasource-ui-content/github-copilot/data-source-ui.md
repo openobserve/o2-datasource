@@ -9,35 +9,44 @@ card:
   runtime: CLI agent
   setup_time: ~2 min
 
-# Live detection — Copilot's exporter appends /v1/traces to the base endpoint,
-# so spans land in the default traces stream. OTEL_SERVICE_NAME (set in step 1)
-# stamps service_name = 'github-copilot' on every signal.
+# Live detection — Copilot's exporter appends /v1/traces to the base endpoint;
+# the installer adds a stream-name header so spans land in the stream chosen
+# below. OTEL_SERVICE_NAME (written by the installer) stamps
+# service_name = 'github-copilot' on every signal.
 detect:
   stream_type: traces
-  stream: default
-  # confirmed in docs: with OTEL_SERVICE_NAME=github-copilot every span carries it
+  stream: default                # fallback; overridden by the stream_input value below
+  # verified on ingest: with OTEL_SERVICE_NAME=github-copilot every span carries it
   filter: "service_name = 'github-copilot'"
+
+# Renders a "Stream Name" text field. Its value feeds the install command's
+# {stream} placeholder AND the detection stream above, so what the installer
+# writes and what the card listens on can never drift.
+stream_input:
+  label: Stream Name
+  default: default
+  placeholder: default
+  help: 'Traces stream for Copilot spans. Leave as "default" or set a dedicated stream.'
 
 doc_url: https://openobserve.ai/docs/integration/ai/github-copilot-tracing/
 slack_url: https://short.openobserve.ai/community
 
 steps:
-  - title: Configure The Copilot CLI
-    description: "Export the OTLP variables before starting `copilot` (add to your shell profile to persist). All of the first three are required: without `COPILOT_OTEL_EXPORTER_TYPE` the CLI writes to a local file instead of OTLP, and without `http/protobuf` OpenObserve rejects the payload. The endpoint is the **base** URL with no trailing slash — the exporter appends `/v1/traces` itself."
+  - title: Run The Installer
+    description: "One command persists Copilot's OpenTelemetry env config into your shell profile — every new terminal (and any VS Code launched from one) exports automatically. It sets the two variables GitHub's docs miss: `COPILOT_OTEL_EXPORTER_TYPE=otlp-http` (the CLI otherwise writes to a local file) and `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` (OTLP JSON is rejected). Safe to re-run."
     chip: { kind: terminal, label: Terminal }
     complete_on: copy
     code:
       lang: bash
       text: |
-        export COPILOT_OTEL_ENABLED=true
-        export COPILOT_OTEL_EXPORTER_TYPE=otlp-http
-        export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-        export OTEL_EXPORTER_OTLP_ENDPOINT="{url}/api/{org}"
-        export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic {token}"
-        export OTEL_SERVICE_NAME=github-copilot
+        curl -fsSL https://raw.githubusercontent.com/openobserve/o2-datasource/main/ai/agents/github-copilot/install.sh | bash -s -- \
+          --url={url} \
+          --org={org} \
+          --stream={stream} \
+          --token="Basic {token}"
 
   - title: Using VS Code Instead? Configure Copilot Chat
-    description: "For the Copilot Chat extension, enable OTel in `settings.json`. The auth header can't be set there — launch VS Code from a shell that has `OTEL_EXPORTER_OTLP_HEADERS` exported (step 1)."
+    description: "For the Copilot Chat extension, enable OTel in `settings.json`. The auth header can't be set there — it comes from the env block the installer wrote in step 1, so launch VS Code from a **new** terminal (`code .`)."
     chip: { kind: editor, label: settings.json }
     complete_on: copy
     note: "Skip this step if you only use the Copilot CLI."
@@ -52,7 +61,7 @@ steps:
         }
 
   - title: Use Copilot
-    description: "Run a Copilot session — `copilot` in a terminal, or Copilot Chat in VS Code — and ask it anything. Every agent turn exports automatically: model calls, tool executions, token usage."
+    description: "Open a **new** terminal (so the installer's env block loads) and run a Copilot session — `copilot`, or Copilot Chat in VS Code launched from that terminal — and ask it anything. Every agent turn exports automatically: model calls, tool executions, token usage."
     chip: { kind: run, label: Run }
     complete_on: detect
     detection_anchor: true
@@ -77,22 +86,22 @@ extras:
     - OTEL_EXPORTER_OTLP_HEADERS
     - OTEL_SERVICE_NAME
 
-fix_title: "Restart The Session With The Variables Set"
-fix_body: "The exporter reads its config at session start. If nothing arrives, confirm the variables are set in the shell that launched Copilot (or VS Code), check the CLI's own log, then start a fresh session:"
+fix_title: "Open A New Terminal And Start A Fresh Session"
+fix_body: "The exporter reads its config at session start, from the shell's env. If nothing arrives, confirm the installer's block is loaded in the shell that launched Copilot, check the CLI's own log, then start a fresh session:"
 fix_lang: bash
 fix_snippet: |
-  # confirm the exporter config is visible to the session
+  # confirm the installer's env block is loaded in THIS shell
   env | grep -E 'COPILOT_OTEL|OTEL_EXPORTER'
 
   # the CLI logs its OTel state — startup line must say exporter=otlp-http
   grep -i "OpenTelemetry enabled" ~/.copilot/logs/$(ls -t ~/.copilot/logs/ | head -1)
 
-  # endpoint must be the BASE url with no trailing slash: .../api/{org}
-  # then start a new copilot session (or relaunch VS Code from this shell)
+  # if the env is missing, re-run the installer (safe to re-run), then
+  # open a NEW terminal and start a new copilot session
 
 troubleshooting:
   - q: "Sessions run but no data appears"
-    a: "Set COPILOT_OTEL_ENABLED=true and start a fresh session — the exporter config is read at session start, not mid-session."
+    a: "The env block loads at shell start and the exporter reads it at session start. Open a new terminal, confirm with `env | grep COPILOT_OTEL`, and run a fresh `copilot` session — sessions already running keep their old env."
   - q: "The CLI log says `exporter=file`"
     a: "The CLI defaults to a local file exporter. Set COPILOT_OTEL_EXPORTER_TYPE=otlp-http and start a fresh session."
   - q: "The CLI log says `HTTP export failed: network error`"
