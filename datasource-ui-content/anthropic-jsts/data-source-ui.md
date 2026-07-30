@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Anthropic (JS/TS)
+  logo: logo.png
+  logo_dark: dark-logo.png
   tagline: "Trace Anthropic SDK calls from Node.js: latency, token usage, model name, and messages."
   runtime: Node.js 18+
   setup_time: ~3 min

@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: OpenAI (JS/TS)
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace OpenAI SDK calls from Node.js: latency, token usage, model name, and finish reason."
   runtime: Node.js 18+
   setup_time: ~3 min

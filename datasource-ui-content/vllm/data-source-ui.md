@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: vLLM
+  logo: logo.svg
   tagline: "Trace local vLLM inference calls: token usage, latency, prompt text, and completion output."
   runtime: Python 3.10+
   setup_time: ~3 min

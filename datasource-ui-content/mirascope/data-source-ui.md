@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Mirascope
+  logo: logo.png
   tagline: "Trace Mirascope LLM calls: token usage, latency, and model metadata."
   runtime: Python 3.9+
   setup_time: ~3 min

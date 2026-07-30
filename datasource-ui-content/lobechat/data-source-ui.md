@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LobeChat
+  logo: logo.svg
   tagline: "Trace every LobeChat chat request: route, HTTP status, and end-to-end latency."
   runtime: Docker
   setup_time: ~3 min

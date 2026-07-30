@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Temporal
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Temporal durable workflows: workflow starts, runs, and activity executions."
   runtime: Python 3.9+
   setup_time: ~5 min

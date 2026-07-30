@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Agno
+  logo: logo.png
   tagline: "Trace Agno agent runs, tool calls, memory lookups, and LLM invocations."
   runtime: Python 3.9+
   setup_time: ~3 min

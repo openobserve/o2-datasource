@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Langserve
+  logo: logo.svg
   tagline: "Trace LangServe RemoteRunnable calls from a Python client with end-to-end latency."
   runtime: Python 3.8+
   setup_time: ~4 min

@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Koog
+  logo: logo.png
   tagline: "Trace JetBrains Koog agent runs, LLM calls, and node-level span trees from Kotlin."
   runtime: JDK 17+ / Kotlin 2.x
   setup_time: ~5 min

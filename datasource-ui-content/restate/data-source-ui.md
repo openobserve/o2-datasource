@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Restate
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Restate service invocations: latency, service/handler names, and status."
   runtime: Python 3.10+
   setup_time: ~5 min

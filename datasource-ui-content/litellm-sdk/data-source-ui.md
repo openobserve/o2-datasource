@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LiteLLM SDK
+  logo: logo.png
   tagline: "Trace LiteLLM completion calls across 100+ providers with token usage, latency, and cost."
   runtime: Python 3.9+
   setup_time: ~3 min

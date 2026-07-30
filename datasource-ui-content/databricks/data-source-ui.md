@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Databricks
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Databricks Model Serving calls: token usage, latency, and resolved model metadata."
   runtime: Python 3.8+
   setup_time: ~3 min

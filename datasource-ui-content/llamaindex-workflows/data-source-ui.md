@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LlamaIndex Workflows
+  logo: logo.svg
   tagline: "Trace LlamaIndex Workflow runs with step-by-step execution spans and LLM calls."
   runtime: Python 3.9+
   setup_time: ~3 min

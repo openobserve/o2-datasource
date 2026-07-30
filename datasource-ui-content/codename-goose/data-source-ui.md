@@ -3,6 +3,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Codename Goose
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace Codename Goose CLI sessions: run latency, exit codes, and output lengths."
   runtime: Python 3.8+
   setup_time: ~4 min

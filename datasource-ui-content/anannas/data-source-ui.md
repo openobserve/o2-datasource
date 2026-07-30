@@ -3,6 +3,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Anannas
+  logo: logo.png
   tagline: "Trace every Anannas gateway call: model, token usage, and latency across 500+ models."
   runtime: Python 3.8+
   setup_time: ~3 min

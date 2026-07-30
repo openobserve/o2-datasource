@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: DSPy
+  logo: logo.png
   tagline: "Trace DSPy module executions, LLM calls, and optimiser runs with token usage."
   runtime: Python 3.9+
   setup_time: ~3 min

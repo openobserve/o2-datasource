@@ -3,6 +3,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Mixpanel
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace LLM calls in OpenObserve while recording usage events in Mixpanel, linked by trace_id."
   runtime: Python 3.8+
   setup_time: ~3 min

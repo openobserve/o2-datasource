@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: Strands Agents
+  logo: logo.svg
   tagline: "Trace Strands agent runs, event-loop cycles, and LLM calls with token usage."
   runtime: Python 3.10+
   setup_time: ~3 min

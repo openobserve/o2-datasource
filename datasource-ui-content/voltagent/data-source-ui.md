@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: VoltAgent
+  logo: logo.png
   tagline: "Trace VoltAgent runs: model, token usage, user ID, and session ID."
   runtime: Node.js 18+
   setup_time: ~3 min

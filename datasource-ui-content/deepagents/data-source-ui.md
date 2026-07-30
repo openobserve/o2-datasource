@@ -2,6 +2,7 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: LangChain DeepAgents
+  logo: logo.svg
   tagline: "Trace DeepAgents runs with LangChain/LangGraph call chains, message counts, and LLM spans."
   runtime: Python 3.11+
   setup_time: ~3 min

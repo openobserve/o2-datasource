@@ -3,6 +3,7 @@
 # Basic card: set env vars -> install & instrument (from docs) -> run & test.
 card:
   name: Milvus
+  logo: logo.svg
   tagline: "Trace Milvus vector search, insert, and delete operations: collection and result counts."
   runtime: Python 3.8+
   setup_time: ~4 min

@@ -2,6 +2,8 @@
 # Rich, stepped setup card for the OpenObserve Data Sources panel.
 card:
   name: BeeAI
+  logo: logo.svg
+  logo_dark: dark-logo.svg
   tagline: "Trace BeeAI ReAct agent runs with latency, model name, question input, and response details."
   runtime: Python 3.11+
   setup_time: ~3 min
