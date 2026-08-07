@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # OpenObserve synthetics private-agent installer — one public script, three
 # platforms (Windows is install.ps1, right next to this file — bash can't run
-# there). Source of truth for the agent binary/image is the (private)
-# synthetic-o2-agent repo; this script is mirrored here because it has to be
+# there). Source of truth for each probe is its own repo (openobserve-
+# synthetic-net-probe for protocol checks, openobserve-synthetics-browser-probe
+# for browser checks); this script is mirrored here because it has to be
 # fetchable without auth, same reason install scripts for other OpenObserve
-# components live in this repo (see k8s/install.sh). Release binaries for
-# linux/Windows are published by the source repo's release workflow to the
-# public downloads bucket (the website's Downloads backend):
-#   https://downloads.openobserve.ai/releases/synthetic-o2-agent/<version>/
-# with a `latest` marker file alongside.
+# components live in this repo (see k8s/install.sh). Each release workflow
+# publishes linux/Windows binaries to the public S3 downloads bucket, with a
+# `latest` marker uploaded last so partial releases are never resolvable:
+#   https://openobserve-synthetics-prod.s3.us-east-1.amazonaws.com/net-probe/<version>/
+#   https://openobserve-synthetics-prod.s3.us-east-1.amazonaws.com/browser-probe/<version>/
+# Browser binaries do NOT bundle Chromium — the linux install for --type=browser
+# needs Playwright browsers already on the host at PLAYWRIGHT_BROWSERS_PATH.
 #
 # Composed and copy-pasted from the OpenObserve UI (Synthetics → set up a
 # private agent). The agent is outbound-only: it long-polls the o2 Job API for
@@ -66,9 +69,9 @@ LOCATION=""
 LOCATION_ID=""
 REGION=""
 AGENT_NAME=""
-IMAGE_REPO="ghcr.io/openobserve/synthetic-o2-agent"
+IMAGE_REPO="ghcr.io/openobserve/openobserve-synthetic-net-probe"
 # Browser checks run a separate Node/Playwright image; --type=browser selects it.
-BROWSER_IMAGE_REPO="ghcr.io/openobserve/synthetics-browser-probe"
+BROWSER_IMAGE_REPO="ghcr.io/openobserve/openobserve-synthetics-browser-probe"
 TYPE="protocol"
 VERSION=""
 IMAGE=""
@@ -76,10 +79,10 @@ NAMESPACE="o2-synthetics"
 LEASE_MAX=""
 STATE_DIR=""
 
-# Where the linux (and install.ps1's Windows) binaries are published by the
-# source repo's release workflow — see header comment above.
-DOWNLOADS_BASE="https://downloads.openobserve.ai/releases/synthetic-o2-agent"
-BINARY_NAME="synthetic-o2-agent"
+# linux/Windows binary source per --type (set below, after TYPE is validated).
+# See the header comment for the S3 layout and the browser Playwright caveat.
+DOWNLOADS_BASE=""
+BINARY_NAME=""
 
 usage() { sed -n '2,54p' "$0" 2>/dev/null || true; }
 
@@ -135,6 +138,18 @@ fi
 # The browser probe runs Chromium — needs far more memory than the static Go
 # net agent (512Mi OOM-kills Chromium mid-check).
 if [ "$TYPE" = "browser" ]; then MEM_LIMIT="2Gi"; else MEM_LIMIT="512Mi"; fi
+
+# S3 downloads for the linux binary (each probe repo publishes its own set with
+# an independent `latest` marker; browser SEA needs Playwright browsers on the
+# target host at PLAYWRIGHT_BROWSERS_PATH — not installed by this script).
+S3_BASE="https://openobserve-synthetics-prod.s3.us-east-1.amazonaws.com"
+if [ "$TYPE" = "browser" ]; then
+  DOWNLOADS_BASE="${S3_BASE}/browser-probe"
+  BINARY_NAME="o2-synthetics-browser-probe"
+else
+  DOWNLOADS_BASE="${S3_BASE}/net-probe"
+  BINARY_NAME="o2-synthetics-net-probe"
+fi
 O2_URL="${O2_URL%/}"
 
 # One host-owned directory for every agent's config (docker + linux; k8s uses

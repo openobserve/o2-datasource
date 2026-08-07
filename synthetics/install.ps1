@@ -1,20 +1,22 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  synthetic-o2-agent installer — Windows Service, native binary (no Docker).
+  o2-synthetics-net-probe installer — Windows Service, native binary (no Docker).
 
   Windows counterpart to install.sh (which is bash-only and can't run here).
   Same agent, same flag shape, same identity model — see install.sh's header
-  comment for the full design notes; this only documents what differs.
+  comment for the full design notes; this only documents what differs. Windows
+  installs the protocol (net) probe only — the browser probe needs Playwright
+  browsers on the host, which is not a supported Windows Service scenario yet.
 
-  Public mirror — this is the fetchable copy. Source of truth for the agent
-  binary is the (private) synthetic-o2-agent repo; this file is mirrored here
+  Public mirror — this is the fetchable copy. Source of truth for the binary
+  is the openobserve-synthetic-net-probe repo; this file is mirrored here
   because it has to be fetchable without auth, same reason install.sh and
   other OpenObserve component installers live in this repo (see k8s/install.sh).
-  Release binaries are published by the source repo's release workflow to the
-  public downloads bucket (the website's Downloads backend):
-  https://downloads.openobserve.ai/releases/synthetic-o2-agent/<version>/
-  with a `latest` marker file alongside.
+  Release binaries are published by that repo's release workflow to the public
+  S3 downloads bucket, with a `latest` marker uploaded last so partial releases
+  are never resolvable:
+  https://openobserve-synthetics-prod.s3.us-east-1.amazonaws.com/net-probe/<version>/
 
   Config is written once as a flat KEY=VALUE file under %ProgramData%
   (%ProgramData%\OpenObserve\synthetics-agent\<service>.env) — the service
@@ -40,8 +42,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$DownloadsBase = "https://downloads.openobserve.ai/releases/synthetic-o2-agent"
-$BinaryName = "synthetic-o2-agent"
+$DownloadsBase = "https://openobserve-synthetics-prod.s3.us-east-1.amazonaws.com/net-probe"
+$BinaryName = "o2-synthetics-net-probe"
 
 function Fail($msg) {
   Write-Error "install.ps1: error: $msg"
