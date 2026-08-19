@@ -308,12 +308,16 @@ Parameters:
   ApiGatewayId:
     Type: String
     Default: ''
-    Description: '[API Gateway] REST API Gateway ID (required when EnableApiGateway=true)'
+    AllowedPattern: '^$|^[A-Za-z0-9]+(,[A-Za-z0-9]+){0,4}$'
+    ConstraintDescription: 'Up to 5 API Gateway IDs, comma separated, no spaces'
+    Description: '[API Gateway] REST API Gateway ID (required when EnableApiGateway=true). Up to 5, comma separated with no spaces (e.g., abc123,def456), paired by position with ApiGatewayStageName.'
 
   ApiGatewayStageName:
     Type: String
     Default: ''
-    Description: '[API Gateway] Stage name (e.g., prod, dev, staging)'
+    AllowedPattern: '^$|^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+){0,4}$'
+    ConstraintDescription: 'Up to 5 stage names, comma separated, no spaces, in the same order as ApiGatewayId'
+    Description: '[API Gateway] Stage name (e.g., prod, dev, staging). One per API Gateway ID, comma separated with no spaces and in the same order (e.g., prod,dev).'
 
   ApiGatewayBackupBucket:
     Type: String
