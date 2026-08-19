@@ -87,8 +87,10 @@ collect_common_config() {
 upload_templates() {
     print_header "Step 2: Upload Templates to S3"
 
+    BUCKET_REGION=""
+
     # Create bucket if it doesn't exist
-    if ! aws s3 ls "s3://$TEMPLATE_BUCKET" --region "$REGION" &>/dev/null; then
+    if ! aws s3api head-bucket --bucket "$TEMPLATE_BUCKET" &>/dev/null; then
         print_info "Creating S3 bucket: $TEMPLATE_BUCKET"
         if [ "$REGION" = "us-east-1" ]; then
             aws s3api create-bucket --bucket "$TEMPLATE_BUCKET" --region "$REGION"
@@ -101,14 +103,34 @@ upload_templates() {
             --bucket "$TEMPLATE_BUCKET" \
             --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
         print_success "Bucket created: $TEMPLATE_BUCKET"
+        BUCKET_REGION="$REGION"
     else
         print_info "Using existing bucket: $TEMPLATE_BUCKET"
+    fi
+
+    # Resolve the bucket's ACTUAL region. The AWS CLI silently follows cross-region
+    # redirects, but CloudFormation does not — a TemplateURL built with the wrong
+    # region fails the nested stacks with "The bucket you are attempting to access
+    # must be addressed using the specified endpoint."
+    if [ -z "$BUCKET_REGION" ]; then
+        BUCKET_REGION=$(aws s3api get-bucket-location --bucket "$TEMPLATE_BUCKET" \
+            --query 'LocationConstraint' --output text 2>/dev/null || echo "")
+        # us-east-1 is reported as None/null; EU legacy buckets report "EU"
+        case "$BUCKET_REGION" in
+            None|null|"") BUCKET_REGION="us-east-1" ;;
+            EU)           BUCKET_REGION="eu-west-1" ;;
+        esac
+    fi
+
+    if [ "$BUCKET_REGION" != "$REGION" ]; then
+        print_warning "Template bucket '$TEMPLATE_BUCKET' lives in $BUCKET_REGION, but the stack deploys to $REGION."
+        print_warning "Passing TemplateS3Region=$BUCKET_REGION so nested stacks use the correct S3 endpoint."
     fi
 
     # Sync all yaml files from aws/ directory (excluding deploy_all/deploy.sh, cleanup.sh)
     print_info "Uploading templates from $AWS_DIR → s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/"
     aws s3 sync "$AWS_DIR" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/" \
-        --region "$REGION" \
+        --region "$BUCKET_REGION" \
         --include "*.yaml" \
         --exclude "*.sh" \
         --exclude "*.md" \
@@ -301,6 +323,7 @@ collect_service_specific_params() {
 build_parameters() {
     PARAMS="TemplateS3Bucket=${TEMPLATE_BUCKET}"
     PARAMS="$PARAMS TemplateS3Prefix=${TEMPLATE_PREFIX}"
+    PARAMS="$PARAMS TemplateS3Region=${BUCKET_REGION:-$REGION}"
     PARAMS="$PARAMS OpenObserveEndpoint=${OO_ENDPOINT}"
     PARAMS="$PARAMS OpenObserveAccessKey=${OO_ACCESS_KEY}"
 

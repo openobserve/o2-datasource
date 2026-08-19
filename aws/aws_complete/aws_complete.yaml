@@ -13,6 +13,7 @@ Metadata:
         Parameters:
           - TemplateS3Bucket
           - TemplateS3Prefix
+          - TemplateS3Region
       - Label:
           default: '2. OpenObserve Common Configuration (Required)'
         Parameters:
@@ -151,6 +152,8 @@ Metadata:
     ParameterLabels:
       TemplateS3Bucket:
         default: 'S3 Bucket containing templates'
+      TemplateS3Region:
+        default: 'Region of the template S3 bucket'
       TemplateS3Prefix:
         default: 'S3 key prefix (folder path)'
       OpenObserveEndpoint:
@@ -173,6 +176,11 @@ Parameters:
     Type: String
     Default: 'aws-cfn-templates'
     Description: 'S3 key prefix (folder) where templates are stored — no trailing slash (e.g., aws-cfn-templates)'
+
+  TemplateS3Region:
+    Type: String
+    Default: ''
+    Description: 'Region the template S3 bucket lives in. Leave empty if the bucket is in the same region as this stack. Set it when the bucket is elsewhere — S3 rejects cross-region endpoints ("must be addressed using the specified endpoint").'
 
   # ============================================================
   # Common OpenObserve Configuration
@@ -651,6 +659,8 @@ Parameters:
 
 
 Conditions:
+  TemplateS3RegionProvided: !Not [!Equals [!Ref TemplateS3Region, '']]
+
   DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
   DeployCloudFront:       !Equals [!Ref EnableCloudFront, 'true']
   DeployCloudWatchLogs:   !Equals [!Ref EnableCloudWatchLogs, 'true']
@@ -678,7 +688,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployApiGateway
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_api_gateway_logs/apigateway-logs-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_api_gateway_logs/apigateway-logs-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -709,7 +721,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployCloudFront
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cloudfront/cloudfront-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudfront/cloudfront-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -737,7 +751,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployCloudWatchLogs
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -766,7 +782,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployCognito
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_cognito_logs/cognito-events-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cognito_logs/cognito-events-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -793,7 +811,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployDynamoDB
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_dynamodb_logs/dynamodb-streams-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_dynamodb_logs/dynamodb-streams-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -821,7 +841,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployEC2
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_ec2_instance/ec2-cloudwatch-via-ssm.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_ec2_instance/ec2-cloudwatch-via-ssm.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         TargetTagKey: !Ref EC2TargetTagKey
         TargetTagValue: !Ref EC2TargetTagValue
@@ -846,7 +868,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployEventBridge
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_eventbridge_events/eventbridge-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_eventbridge_events/eventbridge-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -874,7 +898,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployKinesisStream
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_kinesis_streams/kinesis-to-openobserve-firehose.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_kinesis_streams/kinesis-to-openobserve-firehose.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -903,7 +929,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployRDS
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_rds_logs/rds-logs-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_rds_logs/rds-logs-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -933,7 +961,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployRoute53
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_route53_logs/route53-logs-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_route53_logs/route53-logs-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -961,7 +991,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployS3AccessLogs
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_s3_access_logs/s3-access-logs-to-openobserve.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_s3_access_logs/s3-access-logs-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -990,7 +1022,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployVPCFlowLogs
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_vpc_flow_logs/vpc-flowlogs-to-openobserve-firehose.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_vpc_flow_logs/vpc-flowlogs-to-openobserve-firehose.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
@@ -1018,7 +1052,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployALB
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/aws_alb/aws_alb.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_alb/aws_alb.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         S3BucketName: !Ref ALBS3BucketName
         AWSAccountId: !Ref ALBAWSAccountId
@@ -1048,7 +1084,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployCloudTrail
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/cloudtrail_o2/cloudtrail_o2.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/cloudtrail_o2/cloudtrail_o2.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-CloudTrail'
         HttpEndpointUrl: !Ref OpenObserveEndpoint
@@ -1075,7 +1113,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployCloudWatchMetrics
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/CloudWatch_All_Metrics/CloudWatch_All_Metrics.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/CloudWatch_All_Metrics/CloudWatch_All_Metrics.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-Metrics'
         HttpEndpointUrl: !Ref OpenObserveEndpoint
@@ -1101,7 +1141,9 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: DeployWAF
     Properties:
-      TemplateURL: !Sub 'https://${TemplateS3Bucket}.s3.${AWS::Region}.amazonaws.com/${TemplateS3Prefix}/cloudformation_waf/cloudformation_waf.yaml'
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/cloudformation_waf/cloudformation_waf.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-WAF'
         HttpEndpointUrl: !Ref OpenObserveEndpoint
