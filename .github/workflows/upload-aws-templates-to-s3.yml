@@ -41,18 +41,39 @@ jobs:
       - name: Upload YAML files to S3
         run: |
           echo "Uploading YAML files from aws/ to s3://${S3_BUCKET}/${S3_PATH}"
-          find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec basename {} \; | sort | uniq > /tmp/files.txt
+          echo ""
 
-          # Check for duplicate filenames
-          DUPLICATES=$(find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec basename {} \; | sort | uniq -d)
-          if [ -n "$DUPLICATES" ]; then
-            echo "Error: Duplicate filenames found:"
-            echo "$DUPLICATES"
+          # Every template is uploaded under a folder, mirroring the repo layout, so
+          # aws_complete.yaml can resolve its nested stacks at
+          # <prefix>/<folder>/<template>.yaml. Duplicate basenames across folders are
+          # fine now that keys are no longer flattened.
+          UPLOADED=0
+          while IFS= read -r file; do
+            rel="${file#aws/}"                 # e.g. aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml
+            dir=$(dirname "$rel")
+            base=$(basename "$rel")
+
+            # A template sitting directly under aws/ has no folder in git — derive one
+            # from the filename, without the .yaml/.yml extension.
+            if [ "$dir" = "." ]; then
+              dir="${base%.*}"
+            fi
+
+            # Never let a folder component carry a .yaml/.yml extension.
+            dir=$(printf '%s' "$dir" | sed -E 's/\.(yaml|yml)(\/|$)/\2/g')
+
+            key="${S3_PATH}${dir}/${base}"
+            echo "  ${file} -> s3://${S3_BUCKET}/${key}"
+            aws s3 cp "$file" "s3://${S3_BUCKET}/${key}" --only-show-errors
+            UPLOADED=$((UPLOADED + 1))
+          done < <(find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) | sort)
+
+          echo ""
+          echo "Uploaded ${UPLOADED} file(s)."
+          if [ "$UPLOADED" -eq 0 ]; then
+            echo "Error: no YAML templates found under aws/"
             exit 1
           fi
-
-          # Upload all YAML files to the S3 path (flattened, no folders)
-          find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec aws s3 cp {} s3://${S3_BUCKET}/${S3_PATH} \;
 
       - name: Verify upload
         run: |
@@ -65,6 +86,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Bucket:** s3://${S3_BUCKET}/${S3_PATH}" >> $GITHUB_STEP_SUMMARY
           echo "**Region:** ${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To deploy the nested master stack from this bucket, pass:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "TemplateS3Bucket=${S3_BUCKET}" >> $GITHUB_STEP_SUMMARY
+          echo "TemplateS3Prefix=${S3_PATH%/}" >> $GITHUB_STEP_SUMMARY
+          echo "TemplateS3Region=${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Uploaded Files:" >> $GITHUB_STEP_SUMMARY
           aws s3 ls s3://${S3_BUCKET}/${S3_PATH} --recursive | grep -E '\.(yaml|yml)$' | awk '{print "- " $4}' >> $GITHUB_STEP_SUMMARY || echo "- No files found" >> $GITHUB_STEP_SUMMARY
