@@ -17,10 +17,12 @@ Parameters:
 
 Resources:
   # IAM Role for CloudWatch Metrics Stream
+  # No explicit RoleName — as a nested stack under aws_complete, the parent
+  # stack name is long enough that "PrefixRoleName-${AWS::StackName}-${AWS::Region}"
+  # exceeds the IAM 64-char limit. Let CFN auto-generate the name.
   MetricsStreamRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "CloudWatchMetricsStreamRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -43,7 +45,6 @@ Resources:
   FirehoseRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -86,7 +87,6 @@ Resources:
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
     Properties:
-      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
       DeliveryStreamType: DirectPut
       HttpEndpointDestinationConfiguration:
         EndpointConfiguration:

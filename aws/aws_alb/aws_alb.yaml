@@ -76,7 +76,6 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "LogProcessorLambdaRole-${AWS::StackName}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -106,7 +105,6 @@ Resources:
   LogProcessorLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "LogProcessorLambda-${AWS::StackName}"
       Handler: index.lambda_handler
       Runtime: python3.9
       Role: !GetAtt LambdaExecutionRole.Arn

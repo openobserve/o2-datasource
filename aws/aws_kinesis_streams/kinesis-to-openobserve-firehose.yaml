@@ -130,7 +130,6 @@ Resources:
     Type: AWS::IAM::Role
     Condition: TransformationEnabled
     Properties:
-      RoleName: !Sub '${AWS::StackName}-transformer-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -156,7 +155,6 @@ Resources:
   FirehoseRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${AWS::StackName}-firehose-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
