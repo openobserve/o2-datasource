@@ -29,6 +29,7 @@ Metadata:
           - EnableApiGateway
           - EnableCloudFront
           - EnableCloudWatchLogs
+          - EnableCloudWatchLogsAccountWide
           - EnableCognito
           - EnableDynamoDB
           - EnableEC2
@@ -65,6 +66,12 @@ Metadata:
           - CloudWatchStreamName
           - CloudWatchShardCount
           - CloudWatchFilterPattern
+      - Label:
+          default: 'CloudWatch Logs (Account-Wide) Parameters'
+        Parameters:
+          - CloudWatchLogsAllBackupBucket
+          - CloudWatchLogsAllStreamName
+          - CloudWatchLogsAllShardCount
       - Label:
           default: 'Cognito Parameters'
         Parameters:
@@ -233,6 +240,12 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: 'Stream a CloudWatch Log Group to OpenObserve via Kinesis + Firehose'
+
+  EnableCloudWatchLogsAccountWide:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Stream EVERY current and future CloudWatch Log Group in this region to OpenObserve via a single AWS::Logs::AccountPolicy (auto-discovers new log groups, no comma-list). AWS allows only 1 account-level SUBSCRIPTION_FILTER_POLICY per account per region — if another tool already has one, this fails to create.'
 
   EnableCognito:
     Type: String
@@ -418,6 +431,26 @@ Parameters:
     Type: String
     Default: ''
     Description: '[CloudWatch Logs] Filter pattern (leave empty to stream all logs)'
+
+  # ============================================================
+  # CloudWatch Logs (Account-Wide) Parameters
+  # ============================================================
+  CloudWatchLogsAllBackupBucket:
+    Type: String
+    Default: ''
+    Description: '[CW Logs All] Globally unique S3 bucket name for failed records backup (required when EnableCloudWatchLogsAccountWide=true)'
+
+  CloudWatchLogsAllStreamName:
+    Type: String
+    Default: 'cloudwatch-logs-all'
+    Description: '[CW Logs All] OpenObserve stream name that receives every account log group'
+
+  CloudWatchLogsAllShardCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: '[CW Logs All] Number of Kinesis shards. Bump for high-volume accounts.'
 
   # ============================================================
   # Cognito Parameters
@@ -751,6 +784,7 @@ Conditions:
   DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
   DeployCloudFront:       !Equals [!Ref EnableCloudFront, 'true']
   DeployCloudWatchLogs:   !Equals [!Ref EnableCloudWatchLogs, 'true']
+  DeployCloudWatchLogsAccountWide: !Equals [!Ref EnableCloudWatchLogsAccountWide, 'true']
   DeployCognito:          !Equals [!Ref EnableCognito, 'true']
   DeployDynamoDB:         !Equals [!Ref EnableDynamoDB, 'true']
   DeployEC2:              !Equals [!Ref EnableEC2, 'true']
@@ -781,6 +815,10 @@ Rules:
     Assertions:
       - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true (or the deprecated CloudFrontDistributionId)', Assert: !Or [!Not [!Equals [!Ref CloudFrontDistributionIds, '']], !Not [!Equals [!Ref CloudFrontDistributionId, '']]]}
       - {AssertDescription: 'CloudFrontBackupBucket required when EnableCloudFront=true',    Assert: !Not [!Equals [!Ref CloudFrontBackupBucket, '']]}
+  ValidateCloudWatchLogsAccountWide:
+    RuleCondition: !Equals [!Ref EnableCloudWatchLogsAccountWide, 'true']
+    Assertions:
+      - {AssertDescription: 'CloudWatchLogsAllBackupBucket required when EnableCloudWatchLogsAccountWide=true', Assert: !Not [!Equals [!Ref CloudWatchLogsAllBackupBucket, '']]}
   ValidateCloudWatchLogs:
     RuleCondition: !Equals [!Ref EnableCloudWatchLogs, 'true']
     Assertions:
@@ -939,6 +977,35 @@ Resources:
           Value: !Sub '${AWS::StackName}-cloudwatch-logs'
         - Key: Service
           Value: cloudwatch-logs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: ops0-cloudformation
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+  # ============================================================
+  # CloudWatch Logs — Account-Wide (one AccountPolicy for every log group)
+  # ============================================================
+  CWLogsAll:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployCloudWatchLogsAccountWide
+    Properties:
+      TemplateURL: !Sub
+        - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudwatch_logs_account_wide/cloudwatch-logs-account-wide-to-openobserve.yaml'
+        - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
+      Parameters:
+        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveAccessKey: !Ref OpenObserveAccessKey
+        BackupS3BucketName: !Ref CloudWatchLogsAllBackupBucket
+        StreamName: !Ref CloudWatchLogsAllStreamName
+        ShardCount: !Ref CloudWatchLogsAllShardCount
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudwatch-logs-all'
+        - Key: Service
+          Value: cloudwatch-logs-account-wide
         - Key: Environment
           Value: !Ref Environment
         - Key: ManagedBy
@@ -1363,6 +1430,11 @@ Outputs:
     Description: 'CloudWatch Logs nested stack ID'
     Value: !Ref CWLogs
 
+  CloudWatchLogsAccountWideStackId:
+    Condition: DeployCloudWatchLogsAccountWide
+    Description: 'CloudWatch Logs (account-wide) nested stack ID'
+    Value: !Ref CWLogsAll
+
   CognitoStackId:
     Condition: DeployCognito
     Description: 'Cognito nested stack ID'
@@ -1435,6 +1507,7 @@ Outputs:
       - - !If [DeployApiGateway,       'API Gateway',         !Ref AWS::NoValue]
         - !If [DeployCloudFront,       'CloudFront',          !Ref AWS::NoValue]
         - !If [DeployCloudWatchLogs,   'CloudWatch Logs',     !Ref AWS::NoValue]
+        - !If [DeployCloudWatchLogsAccountWide, 'CloudWatch Logs (account-wide)', !Ref AWS::NoValue]
         - !If [DeployCognito,          'Cognito',             !Ref AWS::NoValue]
         - !If [DeployDynamoDB,         'DynamoDB',            !Ref AWS::NoValue]
         - !If [DeployEC2,              'EC2',                 !Ref AWS::NoValue]
