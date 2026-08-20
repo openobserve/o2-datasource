@@ -29,7 +29,6 @@ Metadata:
           - EnableApiGateway
           - EnableCloudFront
           - EnableCloudWatchLogs
-          - EnableCloudWatchLogsAccountWide
           - EnableCognito
           - EnableDynamoDB
           - EnableEC2
@@ -66,12 +65,6 @@ Metadata:
           - CloudWatchStreamName
           - CloudWatchShardCount
           - CloudWatchFilterPattern
-      - Label:
-          default: 'CloudWatch Logs (Account-Wide) Parameters'
-        Parameters:
-          - CloudWatchLogsAllBackupBucket
-          - CloudWatchLogsAllStreamName
-          - CloudWatchLogsAllShardCount
       - Label:
           default: 'Cognito Parameters'
         Parameters:
@@ -239,13 +232,7 @@ Parameters:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: 'Stream a CloudWatch Log Group to OpenObserve via Kinesis + Firehose'
-
-  EnableCloudWatchLogsAccountWide:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: 'Stream EVERY current and future CloudWatch Log Group in this region to OpenObserve via a single AWS::Logs::AccountPolicy (auto-discovers new log groups, no comma-list). AWS allows only 1 account-level SUBSCRIPTION_FILTER_POLICY per account per region — if another tool already has one, this fails to create.'
+    Description: 'Stream CloudWatch Logs to OpenObserve. Two modes based on CloudWatchLogGroupNames: (a) if you list up to 50 log group names, one SubscriptionFilter per group; (b) if you leave CloudWatchLogGroupNames blank, one AWS::Logs::AccountPolicy subscribes EVERY current and future log group in the region automatically. AWS allows only 1 account-level SUBSCRIPTION_FILTER_POLICY per region per account — if another tool already has one, mode (b) fails to create.'
 
   EnableCognito:
     Type: String
@@ -400,8 +387,8 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: '^$|^[A-Za-z0-9_./#-]+(,[A-Za-z0-9_./#-]+){0,49}$'
-    ConstraintDescription: 'Up to 50 log group names, comma separated, no spaces'
-    Description: '[CloudWatch Logs] Log Group names — up to 50, comma separated (required when EnableCloudWatchLogs=true)'
+    ConstraintDescription: 'Up to 50 log group names, comma separated, no spaces (or blank for account-wide auto-discovery)'
+    Description: '[CloudWatch Logs] Log Group names — up to 50, comma separated. LEAVE BLANK for account-wide mode (auto-discovers every current and future log group via AWS::Logs::AccountPolicy). Only meaningful when EnableCloudWatchLogs=true.'
 
   CloudWatchLogGroupName:
     Type: String
@@ -430,27 +417,7 @@ Parameters:
   CloudWatchFilterPattern:
     Type: String
     Default: ''
-    Description: '[CloudWatch Logs] Filter pattern (leave empty to stream all logs)'
-
-  # ============================================================
-  # CloudWatch Logs (Account-Wide) Parameters
-  # ============================================================
-  CloudWatchLogsAllBackupBucket:
-    Type: String
-    Default: ''
-    Description: '[CW Logs All] Globally unique S3 bucket name for failed records backup (required when EnableCloudWatchLogsAccountWide=true)'
-
-  CloudWatchLogsAllStreamName:
-    Type: String
-    Default: 'cloudwatch-logs-all'
-    Description: '[CW Logs All] OpenObserve stream name that receives every account log group'
-
-  CloudWatchLogsAllShardCount:
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 10
-    Description: '[CW Logs All] Number of Kinesis shards. Bump for high-volume accounts.'
+    Description: '[CloudWatch Logs] Filter pattern (leave empty to stream all logs). Ignored in account-wide mode (SelectionCriteria on AccountPolicy handles scoping instead).'
 
   # ============================================================
   # Cognito Parameters
@@ -783,8 +750,22 @@ Conditions:
 
   DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
   DeployCloudFront:       !Equals [!Ref EnableCloudFront, 'true']
-  DeployCloudWatchLogs:   !Equals [!Ref EnableCloudWatchLogs, 'true']
-  DeployCloudWatchLogsAccountWide: !Equals [!Ref EnableCloudWatchLogsAccountWide, 'true']
+  # EnableCloudWatchLogs=true selects one of two modes based on CloudWatchLogGroupNames:
+  #   * Names provided (either CloudWatchLogGroupNames or the deprecated
+  #     CloudWatchLogGroupName)  → per-group mode via SubscriptionFilter fan-out.
+  #   * Both names params blank  → account-wide mode via AWS::Logs::AccountPolicy.
+  # Mutually exclusive by construction — exactly one of the two nested stacks
+  # runs when EnableCloudWatchLogs=true.
+  DeployCloudWatchLogs: !Equals [!Ref EnableCloudWatchLogs, 'true']
+  DeployCloudWatchLogsPerGroup: !And
+    - !Equals [!Ref EnableCloudWatchLogs, 'true']
+    - !Or
+      - !Not [!Equals [!Ref CloudWatchLogGroupNames, '']]
+      - !Not [!Equals [!Ref CloudWatchLogGroupName, '']]
+  DeployCloudWatchLogsAccountWide: !And
+    - !Equals [!Ref EnableCloudWatchLogs, 'true']
+    - !Equals [!Ref CloudWatchLogGroupNames, '']
+    - !Equals [!Ref CloudWatchLogGroupName, '']
   DeployCognito:          !Equals [!Ref EnableCognito, 'true']
   DeployDynamoDB:         !Equals [!Ref EnableDynamoDB, 'true']
   DeployEC2:              !Equals [!Ref EnableEC2, 'true']
@@ -815,15 +796,11 @@ Rules:
     Assertions:
       - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true (or the deprecated CloudFrontDistributionId)', Assert: !Or [!Not [!Equals [!Ref CloudFrontDistributionIds, '']], !Not [!Equals [!Ref CloudFrontDistributionId, '']]]}
       - {AssertDescription: 'CloudFrontBackupBucket required when EnableCloudFront=true',    Assert: !Not [!Equals [!Ref CloudFrontBackupBucket, '']]}
-  ValidateCloudWatchLogsAccountWide:
-    RuleCondition: !Equals [!Ref EnableCloudWatchLogsAccountWide, 'true']
-    Assertions:
-      - {AssertDescription: 'CloudWatchLogsAllBackupBucket required when EnableCloudWatchLogsAccountWide=true', Assert: !Not [!Equals [!Ref CloudWatchLogsAllBackupBucket, '']]}
   ValidateCloudWatchLogs:
+    # Both modes need a backup bucket. Log group names are optional (blank -> account-wide).
     RuleCondition: !Equals [!Ref EnableCloudWatchLogs, 'true']
     Assertions:
-      - {AssertDescription: 'CloudWatchLogGroupNames required when EnableCloudWatchLogs=true (or the deprecated CloudWatchLogGroupName)', Assert: !Or [!Not [!Equals [!Ref CloudWatchLogGroupNames, '']], !Not [!Equals [!Ref CloudWatchLogGroupName, '']]]}
-      - {AssertDescription: 'CloudWatchBackupBucket required when EnableCloudWatchLogs=true',  Assert: !Not [!Equals [!Ref CloudWatchBackupBucket, '']]}
+      - {AssertDescription: 'CloudWatchBackupBucket required when EnableCloudWatchLogs=true', Assert: !Not [!Equals [!Ref CloudWatchBackupBucket, '']]}
   ValidateDynamoDB:
     RuleCondition: !Equals [!Ref EnableDynamoDB, 'true']
     Assertions:
@@ -958,7 +935,8 @@ Resources:
   # ============================================================
   CWLogs:
     Type: AWS::CloudFormation::Stack
-    Condition: DeployCloudWatchLogs
+    # Per-group mode — runs only when the user provided log group names.
+    Condition: DeployCloudWatchLogsPerGroup
     Properties:
       TemplateURL: !Sub
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml'
@@ -997,9 +975,9 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        BackupS3BucketName: !Ref CloudWatchLogsAllBackupBucket
-        StreamName: !Ref CloudWatchLogsAllStreamName
-        ShardCount: !Ref CloudWatchLogsAllShardCount
+        BackupS3BucketName: !Ref CloudWatchBackupBucket
+        StreamName: !Ref CloudWatchStreamName
+        ShardCount: !Ref CloudWatchShardCount
       TimeoutInMinutes: 30
       Tags:
         - Key: Name
@@ -1426,13 +1404,13 @@ Outputs:
     Value: !Ref CFront
 
   CloudWatchLogsStackId:
-    Condition: DeployCloudWatchLogs
-    Description: 'CloudWatch Logs nested stack ID'
+    Condition: DeployCloudWatchLogsPerGroup
+    Description: 'CloudWatch Logs nested stack ID (per-group mode)'
     Value: !Ref CWLogs
 
   CloudWatchLogsAccountWideStackId:
     Condition: DeployCloudWatchLogsAccountWide
-    Description: 'CloudWatch Logs (account-wide) nested stack ID'
+    Description: 'CloudWatch Logs nested stack ID (account-wide mode)'
     Value: !Ref CWLogsAll
 
   CognitoStackId:
@@ -1506,7 +1484,7 @@ Outputs:
       - ', '
       - - !If [DeployApiGateway,       'API Gateway',         !Ref AWS::NoValue]
         - !If [DeployCloudFront,       'CloudFront',          !Ref AWS::NoValue]
-        - !If [DeployCloudWatchLogs,   'CloudWatch Logs',     !Ref AWS::NoValue]
+        - !If [DeployCloudWatchLogsPerGroup,    'CloudWatch Logs (per-group)',    !Ref AWS::NoValue]
         - !If [DeployCloudWatchLogsAccountWide, 'CloudWatch Logs (account-wide)', !Ref AWS::NoValue]
         - !If [DeployCognito,          'Cognito',             !Ref AWS::NoValue]
         - !If [DeployDynamoDB,         'DynamoDB',            !Ref AWS::NoValue]

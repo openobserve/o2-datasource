@@ -162,7 +162,6 @@ collect_service_params() {
     ask_yes_no "Enable API Gateway logs?" ENABLE_API_GW
     ask_yes_no "Enable CloudFront real-time logs?" ENABLE_CF
     ask_yes_no "Enable CloudWatch Logs?" ENABLE_CWL
-    ask_yes_no "Enable CloudWatch Logs (account-wide, auto-discover)?" ENABLE_CWL_ALL
     ask_yes_no "Enable Cognito events?" ENABLE_COGNITO
     ask_yes_no "Enable DynamoDB streams?" ENABLE_DYNAMO
     ask_yes_no "Enable EC2 CloudWatch Agent (via SSM)?" ENABLE_EC2
@@ -199,20 +198,17 @@ collect_service_specific_params() {
         CF_STREAM="${CF_STREAM:-cloudfront_access_logs}"
     fi
 
-    # CloudWatch Logs
+    # CloudWatch Logs — one flag, two modes:
+    #   * Name log groups explicitly (comma-separated, up to 50) → per-group mode.
+    #   * Leave the names blank                                  → account-wide mode
+    #     (single AWS::Logs::AccountPolicy auto-discovers every current + future
+    #      log group in the region).
     if [ "$ENABLE_CWL" = "true" ]; then
         print_header "CloudWatch Logs Parameters"
-        read -p "  Log Group names — up to 50, comma-separated (e.g., /aws/lambda/fn-a,/aws/lambda/fn-b): " CWL_LOG_GROUP
+        print_info "Leave 'Log Group names' BLANK for account-wide auto-discovery (subscribes every log group in the region via one AccountPolicy). AWS allows only 1 such policy per account per region."
+        read -p "  Log Group names — up to 50, comma-separated (BLANK for account-wide): " CWL_LOG_GROUP
         read -p "  Backup S3 bucket name (globally unique): " CWL_BACKUP_BUCKET
         CWL_STREAM="${CWL_STREAM:-cloudwatch-logs-stream}"
-    fi
-
-    # CloudWatch Logs (Account-Wide)
-    if [ "$ENABLE_CWL_ALL" = "true" ]; then
-        print_header "CloudWatch Logs (Account-Wide) Parameters"
-        print_info "One AccountPolicy subscribes every current and future log group in this region. AWS allows only 1 such policy per account per region."
-        read -p "  Backup S3 bucket name (globally unique): " CWL_ALL_BACKUP_BUCKET
-        CWL_ALL_STREAM="${CWL_ALL_STREAM:-cloudwatch-logs-all}"
     fi
 
     # Cognito
@@ -341,7 +337,6 @@ build_parameters() {
     PARAMS="$PARAMS EnableApiGateway=${ENABLE_API_GW}"
     PARAMS="$PARAMS EnableCloudFront=${ENABLE_CF}"
     PARAMS="$PARAMS EnableCloudWatchLogs=${ENABLE_CWL}"
-    PARAMS="$PARAMS EnableCloudWatchLogsAccountWide=${ENABLE_CWL_ALL:-false}"
     PARAMS="$PARAMS EnableCognito=${ENABLE_COGNITO}"
     PARAMS="$PARAMS EnableDynamoDB=${ENABLE_DYNAMO}"
     PARAMS="$PARAMS EnableEC2=${ENABLE_EC2}"
@@ -369,9 +364,6 @@ build_parameters() {
     [ -n "$CWL_LOG_GROUP" ]       && PARAMS="$PARAMS CloudWatchLogGroupNames=${CWL_LOG_GROUP}"
     [ -n "$CWL_BACKUP_BUCKET" ]   && PARAMS="$PARAMS CloudWatchBackupBucket=${CWL_BACKUP_BUCKET}"
     [ -n "$CWL_STREAM" ]          && PARAMS="$PARAMS CloudWatchStreamName=${CWL_STREAM}"
-
-    [ -n "$CWL_ALL_BACKUP_BUCKET" ] && PARAMS="$PARAMS CloudWatchLogsAllBackupBucket=${CWL_ALL_BACKUP_BUCKET}"
-    [ -n "$CWL_ALL_STREAM" ]        && PARAMS="$PARAMS CloudWatchLogsAllStreamName=${CWL_ALL_STREAM}"
 
     [ -n "$COGNITO_POOL_ID" ]     && PARAMS="$PARAMS CognitoUserPoolId=${COGNITO_POOL_ID}"
     [ -n "$COGNITO_STREAM" ]      && PARAMS="$PARAMS CognitoStreamName=${COGNITO_STREAM}"
@@ -442,7 +434,6 @@ show_summary() {
     [ "$ENABLE_API_GW"     = "true" ] && echo "    ✓ API Gateway"
     [ "$ENABLE_CF"         = "true" ] && echo "    ✓ CloudFront"
     [ "$ENABLE_CWL"        = "true" ] && echo "    ✓ CloudWatch Logs"
-    [ "$ENABLE_CWL_ALL"    = "true" ] && echo "    ✓ CloudWatch Logs (account-wide)"
     [ "$ENABLE_COGNITO"    = "true" ] && echo "    ✓ Cognito"
     [ "$ENABLE_DYNAMO"     = "true" ] && echo "    ✓ DynamoDB"
     [ "$ENABLE_EC2"        = "true" ] && echo "    ✓ EC2 (CloudWatch Agent)"
