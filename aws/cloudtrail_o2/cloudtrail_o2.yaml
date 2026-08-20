@@ -27,6 +27,16 @@ Resources:
       LogGroupName: !Sub "/aws/kinesisfirehose/${AWS::StackName}"
       RetentionInDays: 14
 
+  # Pre-create the log stream Firehose targets so the CloudWatch Logs console
+  # can open it immediately after CREATE_COMPLETE, even before Firehose has
+  # anything to write. Otherwise the console shows "log stream does not exist"
+  # until Firehose lazily creates it.
+  FirehoseLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: DeliveryStreamLogs
+
   # IAM Role for Kinesis Firehose
   FirehoseRole:
     Type: AWS::IAM::Role
@@ -201,7 +211,7 @@ Resources:
         CloudWatchLoggingOptions:
           Enabled: true
           LogGroupName: !Ref FirehoseLogGroup
-          LogStreamName: DeliveryStreamLogs
+          LogStreamName: !Ref FirehoseLogStream
         RoleARN: !GetAtt FirehoseRole.Arn
 
 Outputs:

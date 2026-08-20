@@ -26,6 +26,16 @@ Resources:
       LogGroupName: !Sub "/aws/kinesisfirehose/${AWS::StackName}"
       RetentionInDays: 14
 
+  # Pre-create the log stream Firehose targets so the CloudWatch Logs console
+  # can open it immediately after CREATE_COMPLETE, even before Firehose has
+  # anything to write. Otherwise clicking "View error logs" shows "The
+  # specified log stream does not exist" until Firehose lazily creates it.
+  FirehoseLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: DeliveryStreamLogs
+
   # IAM Role for CloudWatch Metrics Stream
   # No explicit RoleName — as a nested stack under aws_complete, the parent
   # stack name is long enough that "PrefixRoleName-${AWS::StackName}-${AWS::Region}"
@@ -116,7 +126,7 @@ Resources:
         CloudWatchLoggingOptions:
           Enabled: true
           LogGroupName: !Ref FirehoseLogGroup
-          LogStreamName: DeliveryStreamLogs
+          LogStreamName: !Ref FirehoseLogStream
         RoleARN: !GetAtt FirehoseRole.Arn
 
 Outputs:
