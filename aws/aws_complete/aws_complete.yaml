@@ -18,7 +18,6 @@ Metadata:
           default: '2. OpenObserve Common Configuration (Required)'
         Parameters:
           - OpenObserveEndpoint
-          - OpenObserveMetricsEndpointPrefix
           - OpenObserveAccessKey
       - Label:
           default: '3. Environment Configuration'
@@ -168,9 +167,7 @@ Metadata:
       TemplateS3Prefix:
         default: 'S3 key prefix (folder path)'
       OpenObserveEndpoint:
-        default: 'OpenObserve Endpoint URL (logs services)'
-      OpenObserveMetricsEndpointPrefix:
-        default: 'OpenObserve Metrics Endpoint Prefix (CloudWatch Metrics only)'
+        default: 'OpenObserve Endpoint URL'
       OpenObserveAccessKey:
         default: 'OpenObserve Access Key (base64)'
       Environment:
@@ -200,14 +197,7 @@ Parameters:
   # ============================================================
   OpenObserveEndpoint:
     Type: String
-    Description: 'OpenObserve HTTP endpoint URL for logs services (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis). NOT used for CloudWatch Metrics — that uses OpenObserveMetricsEndpointPrefix (different URL path).'
-
-  OpenObserveMetricsEndpointPrefix:
-    Type: String
-    Default: ''
-    AllowedPattern: '^$|^https?://[^\s]+[^/\s]$'
-    ConstraintDescription: 'Leave blank to auto-derive, or provide a full https:// URL with no trailing slash'
-    Description: 'OPTIONAL override — leave blank to auto-derive the CloudWatch Metrics URL from OpenObserveEndpoint (works for OpenObserve Cloud out of the box). Only fill this in for self-hosted OpenObserve behind a subpath, or if you need a non-standard host. Format: https://<host>/aws/<org> (no trailing slash — /cloudwatch_metrics/_kinesis_firehose is appended by the template).'
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis_firehose). Used by all logs services as-is. CloudWatch Metrics reuses this — the template rewrites /api/<org>/<stream>/… to /aws/<org>/cloudwatch_metrics/_kinesis_firehose automatically.'
 
   OpenObserveAccessKey:
     Type: String
@@ -757,7 +747,6 @@ Conditions:
   VpcIdsProvided: !Not [!Equals [!Ref VpcIds, '']]
 
   TemplateS3RegionProvided: !Not [!Equals [!Ref TemplateS3Region, '']]
-  UseMetricsEndpointOverride: !Not [!Equals [!Ref OpenObserveMetricsEndpointPrefix, '']]
 
   DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
   DeployCloudFront:       !Equals [!Ref EnableCloudFront, 'true']
@@ -1300,20 +1289,18 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-Metrics'
-        # Auto-derive the metrics URL from the logs OpenObserveEndpoint. Split on
-        # "/" of e.g. "https://api.host.com/api/<org>/<stream>/_kinesis_firehose":
+        # Derive the CloudWatch Metrics URL from the logs OpenObserveEndpoint.
+        # Split on "/" of e.g. "https://api.host.com/api/<org>/<stream>/_kinesis_firehose":
         #   [0]="https:", [1]="", [2]="api.host.com", [3]="api", [4]=<org>, ...
-        # Rebuild as "${scheme}//${host}/aws/${org}/cloudwatch_metrics/_kinesis_firehose".
-        # If the user provided an explicit prefix (self-hosted subpath, etc.),
-        # honor that instead.
-        HttpEndpointUrl: !If
-          - UseMetricsEndpointOverride
-          - !Sub "${OpenObserveMetricsEndpointPrefix}/cloudwatch_metrics/_kinesis_firehose"
-          - !Sub
-              - "${Scheme}//${Host}/aws/${Org}/cloudwatch_metrics/_kinesis_firehose"
-              - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
-                Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
-                Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+        # Rebuild as "${scheme}//${host}/aws/${org}/cloudwatch_metrics/_kinesis_firehose"
+        # — OpenObserve's dedicated CloudWatch Metric Streams ingester lives at
+        # /aws/<org>/cloudwatch_metrics/_kinesis_firehose and data lands in a
+        # Logs-type stream named "cloudwatch_metrics".
+        HttpEndpointUrl: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/cloudwatch_metrics/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
         AccessKey: !Ref OpenObserveAccessKey
         S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
       TimeoutInMinutes: 30

@@ -306,8 +306,7 @@ collect_service_specific_params() {
     # CloudWatch Metrics
     if [ "$ENABLE_CW_METRICS" = "true" ]; then
         print_header "CloudWatch All Metrics Parameters"
-        print_info "Metrics URL is auto-derived from OpenObserveEndpoint. Only fill the prefix override if you're on self-hosted OpenObserve behind a subpath."
-        read -p "  OpenObserve metrics endpoint PREFIX override — press Enter to auto-derive (e.g., https://<host>/aws/<org>): " OO_METRICS_ENDPOINT_PREFIX
+        print_info "Metrics endpoint is auto-derived from OpenObserveEndpoint (rewrites the /api/ path to /aws/…/cloudwatch_metrics/_kinesis_firehose)."
         read -p "  Backup S3 bucket name (globally unique): " CW_METRICS_BUCKET
     fi
 
@@ -410,8 +409,7 @@ build_parameters() {
     [ -n "$CT_BUCKET" ]           && PARAMS="$PARAMS CloudTrailS3BucketName=${CT_BUCKET}"
     [ -n "$CT_BACKUP_BUCKET" ]    && PARAMS="$PARAMS CloudTrailS3BackupBucket=${CT_BACKUP_BUCKET}"
 
-    [ -n "$OO_METRICS_ENDPOINT_PREFIX" ] && PARAMS="$PARAMS OpenObserveMetricsEndpointPrefix=${OO_METRICS_ENDPOINT_PREFIX}"
-    [ -n "$CW_METRICS_BUCKET" ]          && PARAMS="$PARAMS CloudWatchMetricsS3BackupBucket=${CW_METRICS_BUCKET}"
+    [ -n "$CW_METRICS_BUCKET" ]   && PARAMS="$PARAMS CloudWatchMetricsS3BackupBucket=${CW_METRICS_BUCKET}"
 
     [ -n "$WAF_BUCKET" ]          && PARAMS="$PARAMS WAFS3BucketName=${WAF_BUCKET}"
     [ -n "$WAF_BACKUP_BUCKET" ]   && PARAMS="$PARAMS WAFS3BackupBucket=${WAF_BACKUP_BUCKET}"
