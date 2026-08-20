@@ -306,6 +306,8 @@ collect_service_specific_params() {
     # CloudWatch Metrics
     if [ "$ENABLE_CW_METRICS" = "true" ]; then
         print_header "CloudWatch All Metrics Parameters"
+        print_info "CloudWatch Metrics uses a dedicated OpenObserve endpoint (/aws/ path, fixed stream name 'cloudwatch_metrics')"
+        read -p "  OpenObserve metrics endpoint URL (e.g., https://<host>/aws/<org>/cloudwatch_metrics/_kinesis_firehose): " OO_METRICS_ENDPOINT
         read -p "  Backup S3 bucket name (globally unique): " CW_METRICS_BUCKET
     fi
 
@@ -408,6 +410,7 @@ build_parameters() {
     [ -n "$CT_BUCKET" ]           && PARAMS="$PARAMS CloudTrailS3BucketName=${CT_BUCKET}"
     [ -n "$CT_BACKUP_BUCKET" ]    && PARAMS="$PARAMS CloudTrailS3BackupBucket=${CT_BACKUP_BUCKET}"
 
+    [ -n "$OO_METRICS_ENDPOINT" ] && PARAMS="$PARAMS OpenObserveMetricsEndpoint=${OO_METRICS_ENDPOINT}"
     [ -n "$CW_METRICS_BUCKET" ]   && PARAMS="$PARAMS CloudWatchMetricsS3BackupBucket=${CW_METRICS_BUCKET}"
 
     [ -n "$WAF_BUCKET" ]          && PARAMS="$PARAMS WAFS3BucketName=${WAF_BUCKET}"

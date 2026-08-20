@@ -18,6 +18,7 @@ Metadata:
           default: '2. OpenObserve Common Configuration (Required)'
         Parameters:
           - OpenObserveEndpoint
+          - OpenObserveMetricsEndpoint
           - OpenObserveAccessKey
       - Label:
           default: '3. Environment Configuration'
@@ -167,7 +168,9 @@ Metadata:
       TemplateS3Prefix:
         default: 'S3 key prefix (folder path)'
       OpenObserveEndpoint:
-        default: 'OpenObserve Endpoint URL'
+        default: 'OpenObserve Endpoint URL (logs services)'
+      OpenObserveMetricsEndpoint:
+        default: 'OpenObserve Metrics Endpoint URL (CloudWatch Metrics only)'
       OpenObserveAccessKey:
         default: 'OpenObserve Access Key (base64)'
       Environment:
@@ -197,7 +200,12 @@ Parameters:
   # ============================================================
   OpenObserveEndpoint:
     Type: String
-    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis)'
+    Description: 'OpenObserve HTTP endpoint URL for logs services (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis). NOT used for CloudWatch Metrics — that uses OpenObserveMetricsEndpoint (different URL path).'
+
+  OpenObserveMetricsEndpoint:
+    Type: String
+    Default: ''
+    Description: 'OpenObserve HTTP endpoint URL for CloudWatch Metrics — uses the /aws/ path prefix and the fixed stream name cloudwatch_metrics (e.g., https://api.openobserve.ai/aws/your-org/cloudwatch_metrics/_kinesis_firehose). Required when EnableCloudWatchMetrics=true.'
 
   OpenObserveAccessKey:
     Type: String
@@ -837,7 +845,8 @@ Rules:
   ValidateCloudWatchMetrics:
     RuleCondition: !Equals [!Ref EnableCloudWatchMetrics, 'true']
     Assertions:
-      - {AssertDescription: 'CloudWatchMetricsS3BackupBucket required when EnableCloudWatchMetrics=true', Assert: !Not [!Equals [!Ref CloudWatchMetricsS3BackupBucket, '']]}
+      - {AssertDescription: 'OpenObserveMetricsEndpoint required when EnableCloudWatchMetrics=true (different URL than OpenObserveEndpoint — see param description)', Assert: !Not [!Equals [!Ref OpenObserveMetricsEndpoint, '']]}
+      - {AssertDescription: 'CloudWatchMetricsS3BackupBucket required when EnableCloudWatchMetrics=true',                                                          Assert: !Not [!Equals [!Ref CloudWatchMetricsS3BackupBucket, '']]}
   ValidateWAF:
     RuleCondition: !Equals [!Ref EnableWAF, 'true']
     Assertions:
@@ -1289,7 +1298,7 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-Metrics'
-        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        HttpEndpointUrl: !Ref OpenObserveMetricsEndpoint
         AccessKey: !Ref OpenObserveAccessKey
         S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
       TimeoutInMinutes: 30
