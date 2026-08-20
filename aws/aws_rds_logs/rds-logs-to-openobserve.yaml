@@ -378,6 +378,13 @@ Resources:
               Parameters:
                 - ParameterName: LambdaArn
                   ParameterValue: !GetAtt LogTransformFunction.Arn
+                # Cap Firehose→Lambda input at 0.5 MB so the transformed
+                # newline-JSON output stays under Lambda's 6 MB response cap
+                # even when CW Logs subscription payloads gunzip 5-10x.
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: '0.5'
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: '60'
                 - ParameterName: RoleArn
                   ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
 

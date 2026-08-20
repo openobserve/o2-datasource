@@ -307,6 +307,13 @@ Resources:
                   ParameterValue: !GetAtt LogTransformFunction.Arn
                 - ParameterName: RoleArn
                   ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
+                # Cap Firehose→Lambda input at 0.5 MB so the transformed
+                # newline-JSON output stays under Lambda's 6 MB response cap
+                # even when CW Logs subscription payloads gunzip 5-10x.
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: '0.5'
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: '60'
 
   # IAM Role for CloudWatch Logs to write to Kinesis
   CloudWatchLogsRole:
