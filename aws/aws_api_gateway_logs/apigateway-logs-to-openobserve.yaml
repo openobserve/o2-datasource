@@ -18,15 +18,11 @@ Parameters:
 
   ApiGatewayId:
     Type: String
-    AllowedPattern: '^[A-Za-z0-9]+(,[A-Za-z0-9]+){0,4}$'
-    ConstraintDescription: 'Between 1 and 5 API Gateway IDs, comma separated, no spaces'
-    Description: 'REST API Gateway ID. Up to 5 may be given, comma separated with no spaces (e.g., abc123,def456). Each entry is paired by position with StageName.'
+    Description: 'REST API Gateway ID'
 
   StageName:
     Type: String
-    AllowedPattern: '^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+){0,4}$'
-    ConstraintDescription: 'Between 1 and 5 stage names, comma separated, no spaces, in the same order as ApiGatewayId'
-    Description: 'API Gateway Stage name (e.g., prod, dev, staging). Give one stage per API Gateway ID, comma separated with no spaces and in the same order (e.g., prod,dev).'
+    Description: 'API Gateway Stage name (e.g., prod, dev, staging)'
 
   ShardCount:
     Type: Number
@@ -75,10 +71,7 @@ Resources:
   ApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub
-        - '/aws/apigateway/${Api}/${Stage}'
-        - Api: !Select [0, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]]
-          Stage: !Select [0, !Split [',', !Join [',', [!Ref StageName, '', '', '', '', '']]]]
+      LogGroupName: !Sub '/aws/apigateway/${ApiGatewayId}/${StageName}'
       RetentionInDays: 7
 
   # IAM Role for API Gateway to write to CloudWatch Logs
@@ -407,119 +400,20 @@ Resources:
       DestinationArn: !GetAtt ApiGatewayLogStream.Arn
       RoleArn: !GetAtt CloudWatchLogsRole.Arn
 
-  ApiGatewayLogGroup1:
-    Type: AWS::Logs::LogGroup
-    Condition: HasApi1
-    Properties:
-      LogGroupName: !Sub
-        - '/aws/apigateway/${Api}/${Stage}'
-        - Api: !Select [1, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]]
-          Stage: !Select [1, !Split [',', !Join [',', [!Ref StageName, '', '', '', '', '']]]]
-      RetentionInDays: 7
-
-  LogsSubscriptionFilter1:
-    Type: AWS::Logs::SubscriptionFilter
-    Condition: HasApi1
-    DependsOn:
-      - ApiGatewayLogStream
-      - CloudWatchLogsRole
-      - ApiGatewayLogGroup1
-    Properties:
-      LogGroupName: !Ref ApiGatewayLogGroup1
-      FilterPattern: !Ref FilterPattern
-      DestinationArn: !GetAtt ApiGatewayLogStream.Arn
-      RoleArn: !GetAtt CloudWatchLogsRole.Arn
-
-  ApiGatewayLogGroup2:
-    Type: AWS::Logs::LogGroup
-    Condition: HasApi2
-    Properties:
-      LogGroupName: !Sub
-        - '/aws/apigateway/${Api}/${Stage}'
-        - Api: !Select [2, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]]
-          Stage: !Select [2, !Split [',', !Join [',', [!Ref StageName, '', '', '', '', '']]]]
-      RetentionInDays: 7
-
-  LogsSubscriptionFilter2:
-    Type: AWS::Logs::SubscriptionFilter
-    Condition: HasApi2
-    DependsOn:
-      - ApiGatewayLogStream
-      - CloudWatchLogsRole
-      - ApiGatewayLogGroup2
-    Properties:
-      LogGroupName: !Ref ApiGatewayLogGroup2
-      FilterPattern: !Ref FilterPattern
-      DestinationArn: !GetAtt ApiGatewayLogStream.Arn
-      RoleArn: !GetAtt CloudWatchLogsRole.Arn
-
-  ApiGatewayLogGroup3:
-    Type: AWS::Logs::LogGroup
-    Condition: HasApi3
-    Properties:
-      LogGroupName: !Sub
-        - '/aws/apigateway/${Api}/${Stage}'
-        - Api: !Select [3, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]]
-          Stage: !Select [3, !Split [',', !Join [',', [!Ref StageName, '', '', '', '', '']]]]
-      RetentionInDays: 7
-
-  LogsSubscriptionFilter3:
-    Type: AWS::Logs::SubscriptionFilter
-    Condition: HasApi3
-    DependsOn:
-      - ApiGatewayLogStream
-      - CloudWatchLogsRole
-      - ApiGatewayLogGroup3
-    Properties:
-      LogGroupName: !Ref ApiGatewayLogGroup3
-      FilterPattern: !Ref FilterPattern
-      DestinationArn: !GetAtt ApiGatewayLogStream.Arn
-      RoleArn: !GetAtt CloudWatchLogsRole.Arn
-
-  ApiGatewayLogGroup4:
-    Type: AWS::Logs::LogGroup
-    Condition: HasApi4
-    Properties:
-      LogGroupName: !Sub
-        - '/aws/apigateway/${Api}/${Stage}'
-        - Api: !Select [4, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]]
-          Stage: !Select [4, !Split [',', !Join [',', [!Ref StageName, '', '', '', '', '']]]]
-      RetentionInDays: 7
-
-  LogsSubscriptionFilter4:
-    Type: AWS::Logs::SubscriptionFilter
-    Condition: HasApi4
-    DependsOn:
-      - ApiGatewayLogStream
-      - CloudWatchLogsRole
-      - ApiGatewayLogGroup4
-    Properties:
-      LogGroupName: !Ref ApiGatewayLogGroup4
-      FilterPattern: !Ref FilterPattern
-      DestinationArn: !GetAtt ApiGatewayLogStream.Arn
-      RoleArn: !GetAtt CloudWatchLogsRole.Arn
-
 Conditions:
   ShouldEnableLogging: !Equals [!Ref EnableAccessLogging, 'true']
 
-  # One log group + subscription filter per comma separated API/stage pair.
-  # Slot 0 is always created; the rest switch on as more pairs are supplied.
-  HasApi1: !Not [!Equals [!Select [1, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]], '']]
-  HasApi2: !Not [!Equals [!Select [2, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]], '']]
-  HasApi3: !Not [!Equals [!Select [3, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]], '']]
-  HasApi4: !Not [!Equals [!Select [4, !Split [',', !Join [',', [!Ref ApiGatewayId, '', '', '', '', '']]]], '']]
-
 Outputs:
   ApiGatewayId:
-    Description: 'API Gateway ID(s) being streamed'
+    Description: 'API Gateway ID'
     Value: !Ref ApiGatewayId
 
   StageName:
-    Description: 'API Gateway Stage Name(s), paired by position with ApiGatewayId'
+    Description: 'API Gateway Stage Name'
     Value: !Ref StageName
 
   LogGroupName:
-    Description: 'CloudWatch Log Group Name for the first API/stage pair'
+    Description: 'CloudWatch Log Group Name'
     Value: !Ref ApiGatewayLogGroup
 
   KinesisStreamName:
@@ -539,14 +433,12 @@ Outputs:
     Value: !Ref BackupS3Bucket
 
   SubscriptionFilterName:
-    Description: 'CloudWatch Logs Subscription Filter Name for the first API/stage pair'
+    Description: 'CloudWatch Logs Subscription Filter Name'
     Value: !Ref LogsSubscriptionFilter
 
   NextSteps:
     Description: 'Next Steps'
     Value: !Sub |
-      1. Enable access logging in the API Gateway console for every API/stage pair
-         given in ApiGatewayId (${ApiGatewayId}) and StageName (${StageName})
-      2. Point each stage at its own log group, named /aws/apigateway/<api-id>/<stage>.
-         The first pair's log group ARN is: ${ApiGatewayLogGroup.Arn}
+      1. Enable access logging in API Gateway console for ${ApiGatewayId}/${StageName}
+      2. Set log format and CloudWatch Log Group ARN: ${ApiGatewayLogGroup.Arn}
       3. Access logs will be streamed to OpenObserve automatically

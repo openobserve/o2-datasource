@@ -16,11 +16,9 @@ Parameters:
     Default: 'cloudfront_access_logs'
     Description: 'Name for the OpenObserve stream'
 
-  CloudFrontDistributionIds:
+  CloudFrontDistributionId:
     Type: String
-    AllowedPattern: '^[A-Z0-9]{13,14}(,[A-Z0-9]{13,14}){0,9}$'
-    ConstraintDescription: 'Between 1 and 10 CloudFront distribution IDs, comma separated, no spaces'
-    Description: 'CloudFront Distribution IDs the RealtimeLogConfig will be attached to (documentation only — the template creates the config, you attach it manually to each distribution). Up to 10, comma separated no spaces.'
+    Description: 'CloudFront Distribution ID to enable real-time logging'
 
   ShardCount:
     Type: Number
@@ -333,4 +331,4 @@ Outputs:
 
   NextSteps:
     Description: 'Next Steps'
-    Value: !Sub 'Attach the Real-time Log Config (${CloudFrontRealtimeLogConfig}) to each of the following CloudFront distributions'' cache behaviors in the AWS Console or via CLI: ${CloudFrontDistributionIds}'
+    Value: 'Attach the Real-time Log Config to your CloudFront distribution cache behaviors in the AWS Console or via CLI'

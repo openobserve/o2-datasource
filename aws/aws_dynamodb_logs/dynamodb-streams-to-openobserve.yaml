@@ -16,11 +16,9 @@ Parameters:
     Default: 'dynamodb-streams'
     Description: 'Name for the OpenObserve stream'
 
-  DynamoDBTableNames:
+  DynamoDBTableName:
     Type: String
-    Description: 'DynamoDB table names to forward stream events for (documentation only — you must run `aws dynamodb enable-kinesis-streaming-destination` on each table pointing at the Kinesis stream created here). Up to 50, comma separated no spaces.'
-    AllowedPattern: '^[a-zA-Z0-9_.-]{3,255}(,[a-zA-Z0-9_.-]{3,255}){0,49}$'
-    ConstraintDescription: 'Between 1 and 50 DynamoDB table names, comma separated, no spaces'
+    Description: 'DynamoDB table name to monitor (existing table)'
 
   ShardCount:
     Type: Number
@@ -283,9 +281,9 @@ Resources:
                   ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
 
 Outputs:
-  DynamoDBTableNames:
-    Description: 'DynamoDB Table Names (comma separated)'
-    Value: !Ref DynamoDBTableNames
+  DynamoDBTableName:
+    Description: 'DynamoDB Table Name'
+    Value: !Ref DynamoDBTableName
 
   KinesisStreamName:
     Description: 'Kinesis Data Stream Name'
@@ -306,18 +304,5 @@ Outputs:
   NextSteps:
     Description: 'Next Steps'
     Value: !Sub |
-      Kinesis stream is ready. For EACH table in DynamoDBTableNames (${DynamoDBTableNames}),
-      run the following command to enable Kinesis streaming from DynamoDB (replace <TABLE_NAME>
-      with each table name from the comma-separated list above):
-
-        aws dynamodb enable-kinesis-streaming-destination \
-          --table-name <TABLE_NAME> \
-          --stream-arn ${DynamoDBKinesisStream.Arn}
-
-      Example (bash) to run it for every table in the list:
-
-        for t in $(echo "${DynamoDBTableNames}" | tr ',' ' '); do \
-          aws dynamodb enable-kinesis-streaming-destination \
-            --table-name "$t" \
-            --stream-arn ${DynamoDBKinesisStream.Arn}; \
-        done
+      Kinesis stream is ready. Run this command to enable streaming from DynamoDB:
+      aws dynamodb enable-kinesis-streaming-destination --table-name ${DynamoDBTableName} --stream-arn ${DynamoDBKinesisStream.Arn}

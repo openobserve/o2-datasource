@@ -4,16 +4,31 @@ Description: CloudFormation stack for streaming CloudWatch Metrics to OpenObserv
 Parameters:
   HttpEndpointName:
     Type: String
+    Default: OpenObserve-Metrics
     Description: Name of the HTTP endpoint for Kinesis Firehose.
   AccessKey:
     Type: String
-    Description: Access key for authentication with the HTTP endpoint.
+    NoEcho: true
+    Default: ''
+    Description: >-
+      Access key (base64 encoded user:password) for the OpenObserve HTTP endpoint.
+      REQUIRED at deploy time — supply via an ops0 SECRET named exactly "AccessKey",
+      or by editing CloudWatch_All_Metrics/parameters.json (co-located with this template).
   HttpEndpointUrl:
     Type: String
-    Description: URL of the HTTP endpoint for Kinesis Firehose.
+    Default: ''
+    Description: >-
+      URL of the OpenObserve Firehose HTTP endpoint
+      (e.g. https://api.openobserve.ai/aws/YOUR-ORG/default/_kinesis_firehose).
+      REQUIRED at deploy time — supply via an ops0 VARIABLE named exactly "HttpEndpointUrl",
+      or by editing CloudWatch_All_Metrics/parameters.json (co-located with this template).
   S3BackupBucket:
     Type: String
-    Description: Name of the S3 bucket for Firehose backup.
+    Default: ''
+    Description: >-
+      Name of an existing S3 bucket for Firehose failed-delivery backup.
+      REQUIRED at deploy time — supply via an ops0 VARIABLE named exactly "S3BackupBucket",
+      or by editing CloudWatch_All_Metrics/parameters.json (co-located with this template).
 
 Resources:
   # IAM Role for CloudWatch Metrics Stream
@@ -78,8 +93,6 @@ Resources:
       Name: !Sub "MetricsStream-${AWS::StackName}"
       FirehoseArn: !GetAtt KinesisFirehose.Arn
       RoleArn: !GetAtt MetricsStreamRole.Arn
-#      IncludeFilters:
-#        - Namespace: "AWS/*"
       OutputFormat: opentelemetry1.0
 
   # Kinesis Firehose Delivery Stream

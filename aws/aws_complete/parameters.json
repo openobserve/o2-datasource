@@ -1,0 +1,108 @@
+[
+  {
+    "ParameterKey": "TemplateS3Bucket",
+    "ParameterValue": "openobserve-datasources-bucket"
+  },
+  {
+    "ParameterKey": "TemplateS3Prefix",
+    "ParameterValue": "datasource/cloud/aws"
+  },
+  {
+    "ParameterKey": "TemplateS3Region",
+    "ParameterValue": "us-east-2"
+  },
+  {
+    "ParameterKey": "OpenObserveEndpoint",
+    "ParameterValue": "REPLACE_WITH_OPENOBSERVE_ENDPOINT_URL"
+  },
+  {
+    "ParameterKey": "OpenObserveAccessKey",
+    "ParameterValue": "REPLACE_WITH_BASE64_ENCODED_USER_PASSWORD"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+
+  {
+    "ParameterKey": "EnableApiGateway",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableCloudFront",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableCloudWatchLogs",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableCognito",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableDynamoDB",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableEC2",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableEventBridge",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableKinesisStream",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableRDS",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableRoute53",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableS3AccessLogs",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableVPCFlowLogs",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableALB",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableCloudTrail",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableCloudWatchMetrics",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableWAF",
+    "ParameterValue": "false"
+  },
+
+  {
+    "ParameterKey": "CloudFrontDistributionId",
+    "ParameterValue": "REPLACE_WITH_CLOUDFRONT_DISTRIBUTION_ID"
+  },
+  {
+    "ParameterKey": "CloudFrontBackupBucket",
+    "ParameterValue": "ops0-cf-backup-359375618857-d99aaafd"
+  },
+  {
+    "ParameterKey": "CloudFrontStreamName",
+    "ParameterValue": "cloudfront_access_logs"
+  },
+  {
+    "ParameterKey": "CloudFrontShardCount",
+    "ParameterValue": "1"
+  }
+]
