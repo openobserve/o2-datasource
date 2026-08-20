@@ -25,14 +25,23 @@ Parameters:
 
   BackupS3BucketName:
     Type: String
-    Description: 'S3 bucket name for Firehose failed-records backup (must be globally unique)'
+    Default: ''
+    Description: 'OPTIONAL — name of an EXISTING S3 bucket for Firehose failed-records backup. Leave blank to have CFN create a fresh bucket (auto-generated unique name, AES256 encryption, 30-day expiration, all public access blocked). Provide a name to reuse an existing bucket you already manage — no create attempt.'
+
+Conditions:
+  CreateBackupBucket: !Equals [!Ref BackupS3BucketName, '']
 
 Resources:
   # S3 bucket for records Firehose couldn't deliver (failed-only backup mode).
+  # Only created when the user leaves BackupS3BucketName blank — otherwise
+  # the passed-in bucket is used as-is (user is expected to own the encryption,
+  # lifecycle, and IAM policy of a bucket they specified).
   BackupS3Bucket:
     Type: AWS::S3::Bucket
+    Condition: CreateBackupBucket
     Properties:
-      BucketName: !Ref BackupS3BucketName
+      # No BucketName — CFN auto-generates one, guaranteeing global uniqueness
+      # and eliminating BucketAlreadyOwnedByYou failures on redeploys.
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -178,8 +187,8 @@ Resources:
                   - 's3:ListBucketMultipartUploads'
                   - 's3:PutObject'
                 Resource:
-                  - !GetAtt BackupS3Bucket.Arn
-                  - !Sub '${BackupS3Bucket.Arn}/*'
+                  - !If [CreateBackupBucket, !GetAtt BackupS3Bucket.Arn, !Sub 'arn:aws:s3:::${BackupS3BucketName}']
+                  - !If [CreateBackupBucket, !Sub '${BackupS3Bucket.Arn}/*', !Sub 'arn:aws:s3:::${BackupS3BucketName}/*']
               - Effect: Allow
                 Action:
                   - 'kinesis:DescribeStream'
@@ -203,7 +212,6 @@ Resources:
     Type: AWS::KinesisFirehose::DeliveryStream
     DependsOn:
       - FirehoseDeliveryRole
-      - BackupS3Bucket
     Properties:
       DeliveryStreamType: KinesisStreamAsSource
       KinesisStreamSourceConfiguration:
@@ -226,7 +234,7 @@ Resources:
           DurationInSeconds: 300
         S3BackupMode: FailedDataOnly
         S3Configuration:
-          BucketARN: !GetAtt BackupS3Bucket.Arn
+          BucketARN: !If [CreateBackupBucket, !GetAtt BackupS3Bucket.Arn, !Sub 'arn:aws:s3:::${BackupS3BucketName}']
           RoleARN: !GetAtt FirehoseDeliveryRole.Arn
           CompressionFormat: GZIP
           BufferingHints:
@@ -322,8 +330,8 @@ Outputs:
     Value: !Ref OpenObserveFirehose
 
   BackupS3BucketName:
-    Description: 'S3 Bucket for Failed Records'
-    Value: !Ref BackupS3Bucket
+    Description: 'S3 Bucket for Failed Records (auto-generated if the input param was blank; otherwise the user-provided name)'
+    Value: !If [CreateBackupBucket, !Ref BackupS3Bucket, !Ref BackupS3BucketName]
 
   AccountPolicyName:
     Description: 'CloudWatch Logs Account Policy Name'

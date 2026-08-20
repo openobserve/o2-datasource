@@ -400,7 +400,7 @@ Parameters:
   CloudWatchBackupBucket:
     Type: String
     Default: ''
-    Description: '[CloudWatch Logs] Globally unique S3 bucket name for failed records backup'
+    Description: '[CloudWatch Logs] OPTIONAL — leave blank to have CFN create a fresh backup bucket with an auto-generated unique name, or provide the name of an EXISTING bucket you already manage.'
 
   CloudWatchStreamName:
     Type: String
@@ -719,7 +719,7 @@ Parameters:
   CloudWatchMetricsS3BackupBucket:
     Type: String
     Default: ''
-    Description: '[CloudWatch Metrics] S3 bucket name for Firehose backup (required when EnableCloudWatchMetrics=true)'
+    Description: '[CloudWatch Metrics] OPTIONAL — leave blank to have CFN create a fresh backup bucket with an auto-generated unique name, or provide the name of an EXISTING bucket you already manage.'
 
   # ============================================================
   # WAF Parameters
@@ -796,11 +796,11 @@ Rules:
     Assertions:
       - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true (or the deprecated CloudFrontDistributionId)', Assert: !Or [!Not [!Equals [!Ref CloudFrontDistributionIds, '']], !Not [!Equals [!Ref CloudFrontDistributionId, '']]]}
       - {AssertDescription: 'CloudFrontBackupBucket required when EnableCloudFront=true',    Assert: !Not [!Equals [!Ref CloudFrontBackupBucket, '']]}
-  ValidateCloudWatchLogs:
-    # Both modes need a backup bucket. Log group names are optional (blank -> account-wide).
-    RuleCondition: !Equals [!Ref EnableCloudWatchLogs, 'true']
-    Assertions:
-      - {AssertDescription: 'CloudWatchBackupBucket required when EnableCloudWatchLogs=true', Assert: !Not [!Equals [!Ref CloudWatchBackupBucket, '']]}
+  # ValidateCloudWatchLogs — no assertions needed anymore.
+  # CloudWatchLogGroupNames blank is valid (selects account-wide mode).
+  # CloudWatchBackupBucket blank is valid (nested template auto-creates a
+  # unique bucket). Everything the user must supply is already required by
+  # its own AllowedPattern or has a working default.
   ValidateDynamoDB:
     RuleCondition: !Equals [!Ref EnableDynamoDB, 'true']
     Assertions:
@@ -849,10 +849,8 @@ Rules:
     Assertions:
       - {AssertDescription: 'CloudTrailS3BucketName required when EnableCloudTrail=true',   Assert: !Not [!Equals [!Ref CloudTrailS3BucketName, '']]}
       - {AssertDescription: 'CloudTrailS3BackupBucket required when EnableCloudTrail=true', Assert: !Not [!Equals [!Ref CloudTrailS3BackupBucket, '']]}
-  ValidateCloudWatchMetrics:
-    RuleCondition: !Equals [!Ref EnableCloudWatchMetrics, 'true']
-    Assertions:
-      - {AssertDescription: 'CloudWatchMetricsS3BackupBucket required when EnableCloudWatchMetrics=true', Assert: !Not [!Equals [!Ref CloudWatchMetricsS3BackupBucket, '']]}
+  # ValidateCloudWatchMetrics — no assertions needed anymore. Backup bucket
+  # is now optional; nested template auto-creates a unique one when blank.
   ValidateWAF:
     RuleCondition: !Equals [!Ref EnableWAF, 'true']
     Assertions:
