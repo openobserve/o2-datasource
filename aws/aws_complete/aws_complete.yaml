@@ -790,12 +790,10 @@ Rules:
     Assertions:
       - {AssertDescription: 'ApiGatewayId required when EnableApiGateway=true',           Assert: !Not [!Equals [!Ref ApiGatewayId, '']]}
       - {AssertDescription: 'ApiGatewayStageName required when EnableApiGateway=true',    Assert: !Not [!Equals [!Ref ApiGatewayStageName, '']]}
-      - {AssertDescription: 'ApiGatewayBackupBucket required when EnableApiGateway=true', Assert: !Not [!Equals [!Ref ApiGatewayBackupBucket, '']]}
   ValidateCloudFront:
     RuleCondition: !Equals [!Ref EnableCloudFront, 'true']
     Assertions:
       - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true (or the deprecated CloudFrontDistributionId)', Assert: !Or [!Not [!Equals [!Ref CloudFrontDistributionIds, '']], !Not [!Equals [!Ref CloudFrontDistributionId, '']]]}
-      - {AssertDescription: 'CloudFrontBackupBucket required when EnableCloudFront=true',    Assert: !Not [!Equals [!Ref CloudFrontBackupBucket, '']]}
   # ValidateCloudWatchLogs — no assertions needed anymore.
   # CloudWatchLogGroupNames blank is valid (selects account-wide mode).
   # CloudWatchBackupBucket blank is valid (nested template auto-creates a
@@ -805,12 +803,10 @@ Rules:
     RuleCondition: !Equals [!Ref EnableDynamoDB, 'true']
     Assertions:
       - {AssertDescription: 'DynamoDBTableNames required when EnableDynamoDB=true (or the deprecated DynamoDBTableName)',   Assert: !Or [!Not [!Equals [!Ref DynamoDBTableNames, '']], !Not [!Equals [!Ref DynamoDBTableName, '']]]}
-      - {AssertDescription: 'DynamoDBBackupBucket required when EnableDynamoDB=true', Assert: !Not [!Equals [!Ref DynamoDBBackupBucket, '']]}
   ValidateEventBridge:
     RuleCondition: !Equals [!Ref EnableEventBridge, 'true']
     Assertions:
       - {AssertDescription: 'EventBridgeRuleName required when EnableEventBridge=true',    Assert: !Not [!Equals [!Ref EventBridgeRuleName, '']]}
-      - {AssertDescription: 'EventBridgeBackupBucket required when EnableEventBridge=true', Assert: !Not [!Equals [!Ref EventBridgeBackupBucket, '']]}
   ValidateKinesisStream:
     RuleCondition: !Equals [!Ref EnableKinesisStream, 'true']
     Assertions:
@@ -819,23 +815,19 @@ Rules:
     RuleCondition: !Equals [!Ref EnableRDS, 'true']
     Assertions:
       - {AssertDescription: 'RDSLogGroupNames required when EnableRDS=true (or the deprecated RDSLogGroupName)', Assert: !Or [!Not [!Equals [!Ref RDSLogGroupNames, '']], !Not [!Equals [!Ref RDSLogGroupName, '']]]}
-      - {AssertDescription: 'RDSBackupBucket required when EnableRDS=true',  Assert: !Not [!Equals [!Ref RDSBackupBucket, '']]}
   ValidateRoute53:
     RuleCondition: !Equals [!Ref EnableRoute53, 'true']
     Assertions:
       - {AssertDescription: 'Route53HostedZoneIds required when EnableRoute53=true (or the deprecated Route53HostedZoneId)', Assert: !Or [!Not [!Equals [!Ref Route53HostedZoneIds, '']], !Not [!Equals [!Ref Route53HostedZoneId, '']]]}
-      - {AssertDescription: 'Route53BackupBucket required when EnableRoute53=true',  Assert: !Not [!Equals [!Ref Route53BackupBucket, '']]}
   ValidateS3AccessLogs:
     RuleCondition: !Equals [!Ref EnableS3AccessLogs, 'true']
     Assertions:
       - {AssertDescription: 'S3SourceBucketNames required when EnableS3AccessLogs=true (or the deprecated S3SourceBucketName)',     Assert: !Or [!Not [!Equals [!Ref S3SourceBucketNames, '']], !Not [!Equals [!Ref S3SourceBucketName, '']]]}
       - {AssertDescription: 'S3LogDestinationBucket required when EnableS3AccessLogs=true',  Assert: !Not [!Equals [!Ref S3LogDestinationBucket, '']]}
-      - {AssertDescription: 'S3AccessLogsBackupBucket required when EnableS3AccessLogs=true',Assert: !Not [!Equals [!Ref S3AccessLogsBackupBucket, '']]}
   ValidateVPCFlowLogs:
     RuleCondition: !Equals [!Ref EnableVPCFlowLogs, 'true']
     Assertions:
       - {AssertDescription: 'VpcIds required when EnableVPCFlowLogs=true (or the deprecated VpcId)',          Assert: !Or [!Not [!Equals [!Ref VpcIds, '']], !Not [!Equals [!Ref VpcId, '']]]}
-      - {AssertDescription: 'VPCBackupBucket required when EnableVPCFlowLogs=true', Assert: !Not [!Equals [!Ref VPCBackupBucket, '']]}
   ValidateALB:
     RuleCondition: !Equals [!Ref EnableALB, 'true']
     Assertions:
@@ -848,14 +840,12 @@ Rules:
     RuleCondition: !Equals [!Ref EnableCloudTrail, 'true']
     Assertions:
       - {AssertDescription: 'CloudTrailS3BucketName required when EnableCloudTrail=true',   Assert: !Not [!Equals [!Ref CloudTrailS3BucketName, '']]}
-      - {AssertDescription: 'CloudTrailS3BackupBucket required when EnableCloudTrail=true', Assert: !Not [!Equals [!Ref CloudTrailS3BackupBucket, '']]}
   # ValidateCloudWatchMetrics — no assertions needed anymore. Backup bucket
   # is now optional; nested template auto-creates a unique one when blank.
   ValidateWAF:
     RuleCondition: !Equals [!Ref EnableWAF, 'true']
     Assertions:
       - {AssertDescription: 'WAFS3BucketName required when EnableWAF=true',   Assert: !Not [!Equals [!Ref WAFS3BucketName, '']]}
-      - {AssertDescription: 'WAFS3BackupBucket required when EnableWAF=true', Assert: !Not [!Equals [!Ref WAFS3BackupBucket, '']]}
 
 
 Resources:
