@@ -171,10 +171,10 @@ Resources:
               output = []
 
               for record in event['records']:
-                  try:
-                      # Decode the data
-                      payload = base64.b64decode(record['data'])
+                  # Decode the data
+                  payload = base64.b64decode(record['data'])
 
+                  try:
                       # Decompress the gzip data from CloudWatch Logs
                       decompressed = gzip.decompress(payload)
                       log_data = json.loads(decompressed)
@@ -373,6 +373,8 @@ Resources:
       RoleArn: !GetAtt CloudWatchLogsRole.Arn
 
   # VPC Flow Log
+  # AWS::EC2::FlowLog uses `ResourceId` (singular string), not `ResourceIds`.
+  # cfn-lint E3002/E3003.
   VPCFlowLog:
     Type: AWS::EC2::FlowLog
     DependsOn:
@@ -380,8 +382,7 @@ Resources:
       - FlowLogsRole
     Properties:
       ResourceType: VPC
-      ResourceIds:
-        - !Ref VpcId
+      ResourceId: !Ref VpcId
       TrafficType: !Ref TrafficType
       LogDestinationType: cloud-watch-logs
       LogGroupName: !Ref FlowLogsLogGroup
@@ -430,4 +431,4 @@ Outputs:
 
   NextSteps:
     Description: 'Next Steps'
-    Value: 'VPC Flow Logs are now streaming to OpenObserve via CloudWatch Logs and Kinesis with protocol enrichment'
+    Value: 'VPC Flow Logs are now streaming to OpenObserve via CloudWatch Logs → Kinesis → Firehose'
