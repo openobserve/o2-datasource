@@ -149,6 +149,16 @@ Metadata:
         Parameters:
           - WAFS3BucketName
           - WAFS3BackupBucket
+      - Label:
+          default: 'Deprecated (leave blank — kept for older launch links)'
+        Parameters:
+          - CloudWatchLogGroupName
+          - CloudFrontDistributionId
+          - DynamoDBTableName
+          - RDSLogGroupName
+          - Route53HostedZoneId
+          - S3SourceBucketName
+          - VpcId
     ParameterLabels:
       TemplateS3Bucket:
         default: 'S3 Bucket containing templates'
@@ -346,6 +356,13 @@ Parameters:
     ConstraintDescription: 'Up to 10 CloudFront distribution IDs, comma separated, no spaces'
     Description: '[CloudFront] Distribution IDs — up to 10, comma separated (attach the RealtimeLogConfig to each yourself; required when EnableCloudFront=true)'
 
+  CloudFrontDistributionId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Z0-9]{13,14}(,[A-Z0-9]{13,14}){0,9}$'
+    ConstraintDescription: 'Deprecated alias of CloudFrontDistributionIds — same format'
+    Description: 'DEPRECATED [CloudFront] Renamed to CloudFrontDistributionIds. Kept so older launch links keep working; if both are set, CloudFrontDistributionIds wins. Leave blank and use CloudFrontDistributionIds.'
+
   CloudFrontBackupBucket:
     Type: String
     Default: ''
@@ -372,6 +389,13 @@ Parameters:
     AllowedPattern: '^$|^[A-Za-z0-9_./#-]+(,[A-Za-z0-9_./#-]+){0,49}$'
     ConstraintDescription: 'Up to 50 log group names, comma separated, no spaces'
     Description: '[CloudWatch Logs] Log Group names — up to 50, comma separated (required when EnableCloudWatchLogs=true)'
+
+  CloudWatchLogGroupName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9_./#-]+(,[A-Za-z0-9_./#-]+){0,49}$'
+    ConstraintDescription: 'Deprecated alias of CloudWatchLogGroupNames — same format'
+    Description: 'DEPRECATED [CloudWatch Logs] Renamed to CloudWatchLogGroupNames. Kept so older launch links keep working; if both are set, CloudWatchLogGroupNames wins. Leave blank and use CloudWatchLogGroupNames.'
 
   CloudWatchBackupBucket:
     Type: String
@@ -417,6 +441,13 @@ Parameters:
     AllowedPattern: '^$|^[a-zA-Z0-9_.-]{3,255}(,[a-zA-Z0-9_.-]{3,255}){0,49}$'
     ConstraintDescription: 'Up to 50 table names, comma separated, no spaces'
     Description: '[DynamoDB] Table names — up to 50, comma separated (run enable-kinesis-streaming-destination on each; required when EnableDynamoDB=true)'
+
+  DynamoDBTableName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-zA-Z0-9_.-]{3,255}(,[a-zA-Z0-9_.-]{3,255}){0,49}$'
+    ConstraintDescription: 'Deprecated alias of DynamoDBTableNames — same format'
+    Description: 'DEPRECATED [DynamoDB] Renamed to DynamoDBTableNames. Kept so older launch links keep working; if both are set, DynamoDBTableNames wins. Leave blank and use DynamoDBTableNames.'
 
   DynamoDBBackupBucket:
     Type: String
@@ -499,6 +530,13 @@ Parameters:
     ConstraintDescription: 'Up to 50 log group names, comma separated, no spaces'
     Description: '[RDS] CloudWatch Log Group names to stream — up to 50, comma separated no spaces (e.g., /aws/rds/instance/db-a/error,/aws/rds/instance/db-a/slowquery). Required when EnableRDS=true.'
 
+  RDSLogGroupName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9_./#-]+(,[A-Za-z0-9_./#-]+){0,49}$'
+    ConstraintDescription: 'Deprecated alias of RDSLogGroupNames — same format'
+    Description: 'DEPRECATED [RDS] Renamed to RDSLogGroupNames. Kept so older launch links keep working; if both are set, RDSLogGroupNames wins. Leave blank and use RDSLogGroupNames.'
+
   RDSBackupBucket:
     Type: String
     Default: ''
@@ -529,6 +567,13 @@ Parameters:
     ConstraintDescription: 'Up to 50 Hosted Zone IDs (each starts with Z), comma separated, no spaces'
     Description: '[Route53] Hosted Zone IDs — up to 50, comma separated (required when EnableRoute53=true; stack must be deployed in us-east-1)'
 
+  Route53HostedZoneId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^Z[A-Z0-9]+(,Z[A-Z0-9]+){0,49}$'
+    ConstraintDescription: 'Deprecated alias of Route53HostedZoneIds — same format'
+    Description: 'DEPRECATED [Route53] Renamed to Route53HostedZoneIds. Kept so older launch links keep working; if both are set, Route53HostedZoneIds wins. Leave blank and use Route53HostedZoneIds.'
+
   Route53BackupBucket:
     Type: String
     Default: ''
@@ -555,6 +600,13 @@ Parameters:
     AllowedPattern: '^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](,[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]){0,49}$'
     ConstraintDescription: 'Up to 50 source bucket names, comma separated, no spaces'
     Description: '[S3 Access Logs] Source bucket names — up to 50, comma separated (enable server access logging on each yourself; required when EnableS3AccessLogs=true)'
+
+  S3SourceBucketName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](,[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]){0,49}$'
+    ConstraintDescription: 'Deprecated alias of S3SourceBucketNames — same format'
+    Description: 'DEPRECATED [S3 Access Logs] Renamed to S3SourceBucketNames. Kept so older launch links keep working; if both are set, S3SourceBucketNames wins. Leave blank and use S3SourceBucketNames.'
 
   S3LogDestinationBucket:
     Type: String
@@ -585,6 +637,13 @@ Parameters:
     AllowedPattern: '^$|^vpc-[0-9a-f]{8,17}(,vpc-[0-9a-f]{8,17}){0,49}$'
     ConstraintDescription: 'Up to 50 VPC IDs, comma separated, no spaces (format: vpc-xxxxxxxx)'
     Description: '[VPC Flow Logs] VPC IDs to monitor — up to 50, comma separated no spaces (e.g., vpc-abc123def456,vpc-abc123def457). Required when EnableVPCFlowLogs=true.'
+
+  VpcId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^vpc-[0-9a-f]{8,17}(,vpc-[0-9a-f]{8,17}){0,49}$'
+    ConstraintDescription: 'Deprecated alias of VpcIds — same format'
+    Description: 'DEPRECATED [VPC Flow Logs] Renamed to VpcIds. Kept so older launch links keep working; if both are set, VpcIds wins. Leave blank and use VpcIds.'
 
   VPCBackupBucket:
     Type: String
@@ -677,6 +736,16 @@ Parameters:
 
 
 Conditions:
+  # Each renamed parameter falls back to its deprecated singular alias so launch
+  # links built before the rename still deliver a value.
+  CloudWatchLogGroupNamesProvided: !Not [!Equals [!Ref CloudWatchLogGroupNames, '']]
+  CloudFrontDistributionIdsProvided: !Not [!Equals [!Ref CloudFrontDistributionIds, '']]
+  DynamoDBTableNamesProvided: !Not [!Equals [!Ref DynamoDBTableNames, '']]
+  RDSLogGroupNamesProvided: !Not [!Equals [!Ref RDSLogGroupNames, '']]
+  Route53HostedZoneIdsProvided: !Not [!Equals [!Ref Route53HostedZoneIds, '']]
+  S3SourceBucketNamesProvided: !Not [!Equals [!Ref S3SourceBucketNames, '']]
+  VpcIdsProvided: !Not [!Equals [!Ref VpcIds, '']]
+
   TemplateS3RegionProvided: !Not [!Equals [!Ref TemplateS3Region, '']]
 
   DeployApiGateway:       !Equals [!Ref EnableApiGateway, 'true']
@@ -710,17 +779,17 @@ Rules:
   ValidateCloudFront:
     RuleCondition: !Equals [!Ref EnableCloudFront, 'true']
     Assertions:
-      - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true', Assert: !Not [!Equals [!Ref CloudFrontDistributionIds, '']]}
+      - {AssertDescription: 'CloudFrontDistributionIds required when EnableCloudFront=true (or the deprecated CloudFrontDistributionId)', Assert: !Or [!Not [!Equals [!Ref CloudFrontDistributionIds, '']], !Not [!Equals [!Ref CloudFrontDistributionId, '']]]}
       - {AssertDescription: 'CloudFrontBackupBucket required when EnableCloudFront=true',    Assert: !Not [!Equals [!Ref CloudFrontBackupBucket, '']]}
   ValidateCloudWatchLogs:
     RuleCondition: !Equals [!Ref EnableCloudWatchLogs, 'true']
     Assertions:
-      - {AssertDescription: 'CloudWatchLogGroupNames required when EnableCloudWatchLogs=true', Assert: !Not [!Equals [!Ref CloudWatchLogGroupNames, '']]}
+      - {AssertDescription: 'CloudWatchLogGroupNames required when EnableCloudWatchLogs=true (or the deprecated CloudWatchLogGroupName)', Assert: !Or [!Not [!Equals [!Ref CloudWatchLogGroupNames, '']], !Not [!Equals [!Ref CloudWatchLogGroupName, '']]]}
       - {AssertDescription: 'CloudWatchBackupBucket required when EnableCloudWatchLogs=true',  Assert: !Not [!Equals [!Ref CloudWatchBackupBucket, '']]}
   ValidateDynamoDB:
     RuleCondition: !Equals [!Ref EnableDynamoDB, 'true']
     Assertions:
-      - {AssertDescription: 'DynamoDBTableNames required when EnableDynamoDB=true',   Assert: !Not [!Equals [!Ref DynamoDBTableNames, '']]}
+      - {AssertDescription: 'DynamoDBTableNames required when EnableDynamoDB=true (or the deprecated DynamoDBTableName)',   Assert: !Or [!Not [!Equals [!Ref DynamoDBTableNames, '']], !Not [!Equals [!Ref DynamoDBTableName, '']]]}
       - {AssertDescription: 'DynamoDBBackupBucket required when EnableDynamoDB=true', Assert: !Not [!Equals [!Ref DynamoDBBackupBucket, '']]}
   ValidateEventBridge:
     RuleCondition: !Equals [!Ref EnableEventBridge, 'true']
@@ -734,23 +803,23 @@ Rules:
   ValidateRDS:
     RuleCondition: !Equals [!Ref EnableRDS, 'true']
     Assertions:
-      - {AssertDescription: 'RDSLogGroupNames required when EnableRDS=true', Assert: !Not [!Equals [!Ref RDSLogGroupNames, '']]}
+      - {AssertDescription: 'RDSLogGroupNames required when EnableRDS=true (or the deprecated RDSLogGroupName)', Assert: !Or [!Not [!Equals [!Ref RDSLogGroupNames, '']], !Not [!Equals [!Ref RDSLogGroupName, '']]]}
       - {AssertDescription: 'RDSBackupBucket required when EnableRDS=true',  Assert: !Not [!Equals [!Ref RDSBackupBucket, '']]}
   ValidateRoute53:
     RuleCondition: !Equals [!Ref EnableRoute53, 'true']
     Assertions:
-      - {AssertDescription: 'Route53HostedZoneIds required when EnableRoute53=true', Assert: !Not [!Equals [!Ref Route53HostedZoneIds, '']]}
+      - {AssertDescription: 'Route53HostedZoneIds required when EnableRoute53=true (or the deprecated Route53HostedZoneId)', Assert: !Or [!Not [!Equals [!Ref Route53HostedZoneIds, '']], !Not [!Equals [!Ref Route53HostedZoneId, '']]]}
       - {AssertDescription: 'Route53BackupBucket required when EnableRoute53=true',  Assert: !Not [!Equals [!Ref Route53BackupBucket, '']]}
   ValidateS3AccessLogs:
     RuleCondition: !Equals [!Ref EnableS3AccessLogs, 'true']
     Assertions:
-      - {AssertDescription: 'S3SourceBucketNames required when EnableS3AccessLogs=true',     Assert: !Not [!Equals [!Ref S3SourceBucketNames, '']]}
+      - {AssertDescription: 'S3SourceBucketNames required when EnableS3AccessLogs=true (or the deprecated S3SourceBucketName)',     Assert: !Or [!Not [!Equals [!Ref S3SourceBucketNames, '']], !Not [!Equals [!Ref S3SourceBucketName, '']]]}
       - {AssertDescription: 'S3LogDestinationBucket required when EnableS3AccessLogs=true',  Assert: !Not [!Equals [!Ref S3LogDestinationBucket, '']]}
       - {AssertDescription: 'S3AccessLogsBackupBucket required when EnableS3AccessLogs=true',Assert: !Not [!Equals [!Ref S3AccessLogsBackupBucket, '']]}
   ValidateVPCFlowLogs:
     RuleCondition: !Equals [!Ref EnableVPCFlowLogs, 'true']
     Assertions:
-      - {AssertDescription: 'VpcIds required when EnableVPCFlowLogs=true',          Assert: !Not [!Equals [!Ref VpcIds, '']]}
+      - {AssertDescription: 'VpcIds required when EnableVPCFlowLogs=true (or the deprecated VpcId)',          Assert: !Or [!Not [!Equals [!Ref VpcIds, '']], !Not [!Equals [!Ref VpcId, '']]]}
       - {AssertDescription: 'VPCBackupBucket required when EnableVPCFlowLogs=true', Assert: !Not [!Equals [!Ref VPCBackupBucket, '']]}
   ValidateALB:
     RuleCondition: !Equals [!Ref EnableALB, 'true']
@@ -824,7 +893,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        CloudFrontDistributionIds: !Ref CloudFrontDistributionIds
+        CloudFrontDistributionIds: !If [CloudFrontDistributionIdsProvided, !Ref CloudFrontDistributionIds, !Ref CloudFrontDistributionId]
         BackupS3BucketName: !Ref CloudFrontBackupBucket
         StreamName: !Ref CloudFrontStreamName
         ShardCount: !Ref CloudFrontShardCount
@@ -854,7 +923,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        LogGroupNames: !Ref CloudWatchLogGroupNames
+        LogGroupNames: !If [CloudWatchLogGroupNamesProvided, !Ref CloudWatchLogGroupNames, !Ref CloudWatchLogGroupName]
         BackupS3BucketName: !Ref CloudWatchBackupBucket
         StreamName: !Ref CloudWatchStreamName
         ShardCount: !Ref CloudWatchShardCount
@@ -914,7 +983,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        DynamoDBTableNames: !Ref DynamoDBTableNames
+        DynamoDBTableNames: !If [DynamoDBTableNamesProvided, !Ref DynamoDBTableNames, !Ref DynamoDBTableName]
         BackupS3BucketName: !Ref DynamoDBBackupBucket
         StreamName: !Ref DynamoDBStreamName
         ShardCount: !Ref DynamoDBShardCount
@@ -1032,7 +1101,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        LogGroupNames: !Ref RDSLogGroupNames
+        LogGroupNames: !If [RDSLogGroupNamesProvided, !Ref RDSLogGroupNames, !Ref RDSLogGroupName]
         BackupS3BucketName: !Ref RDSBackupBucket
         StreamName: !Ref RDSStreamName
         ShardCount: 1
@@ -1064,7 +1133,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        HostedZoneIds: !Ref Route53HostedZoneIds
+        HostedZoneIds: !If [Route53HostedZoneIdsProvided, !Ref Route53HostedZoneIds, !Ref Route53HostedZoneId]
         BackupS3BucketName: !Ref Route53BackupBucket
         StreamName: !Ref Route53StreamName
         ShardCount: !Ref Route53ShardCount
@@ -1094,7 +1163,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        SourceBucketNames: !Ref S3SourceBucketNames
+        SourceBucketNames: !If [S3SourceBucketNamesProvided, !Ref S3SourceBucketNames, !Ref S3SourceBucketName]
         LogDestinationBucketName: !Ref S3LogDestinationBucket
         BackupS3BucketName: !Ref S3AccessLogsBackupBucket
         StreamName: !Ref S3StreamName
@@ -1125,7 +1194,7 @@ Resources:
       Parameters:
         OpenObserveEndpoint: !Ref OpenObserveEndpoint
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
-        VpcIds: !Ref VpcIds
+        VpcIds: !If [VpcIdsProvided, !Ref VpcIds, !Ref VpcId]
         BackupS3BucketName: !Ref VPCBackupBucket
         StreamName: !Ref VPCStreamName
         TrafficType: !Ref VPCTrafficType
