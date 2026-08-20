@@ -18,7 +18,7 @@ Metadata:
           default: '2. OpenObserve Common Configuration (Required)'
         Parameters:
           - OpenObserveEndpoint
-          - OpenObserveMetricsEndpoint
+          - OpenObserveMetricsEndpointPrefix
           - OpenObserveAccessKey
       - Label:
           default: '3. Environment Configuration'
@@ -169,8 +169,8 @@ Metadata:
         default: 'S3 key prefix (folder path)'
       OpenObserveEndpoint:
         default: 'OpenObserve Endpoint URL (logs services)'
-      OpenObserveMetricsEndpoint:
-        default: 'OpenObserve Metrics Endpoint URL (CloudWatch Metrics only)'
+      OpenObserveMetricsEndpointPrefix:
+        default: 'OpenObserve Metrics Endpoint Prefix (CloudWatch Metrics only)'
       OpenObserveAccessKey:
         default: 'OpenObserve Access Key (base64)'
       Environment:
@@ -200,12 +200,14 @@ Parameters:
   # ============================================================
   OpenObserveEndpoint:
     Type: String
-    Description: 'OpenObserve HTTP endpoint URL for logs services (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis). NOT used for CloudWatch Metrics — that uses OpenObserveMetricsEndpoint (different URL path).'
+    Description: 'OpenObserve HTTP endpoint URL for logs services (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis). NOT used for CloudWatch Metrics — that uses OpenObserveMetricsEndpointPrefix (different URL path).'
 
-  OpenObserveMetricsEndpoint:
+  OpenObserveMetricsEndpointPrefix:
     Type: String
     Default: ''
-    Description: 'OpenObserve HTTP endpoint URL for CloudWatch Metrics — uses the /aws/ path prefix and the fixed stream name cloudwatch_metrics (e.g., https://api.openobserve.ai/aws/your-org/cloudwatch_metrics/_kinesis_firehose). Required when EnableCloudWatchMetrics=true.'
+    AllowedPattern: '^$|^https?://[^\s]+[^/\s]$'
+    ConstraintDescription: 'Must start with http(s):// and not end with a trailing slash'
+    Description: 'OpenObserve HTTP endpoint PREFIX for CloudWatch Metrics — provide up to /aws/<org> only, no trailing slash (e.g., https://api.openobserve.ai/aws/your-org). The template appends /cloudwatch_metrics/_kinesis_firehose automatically. Required when EnableCloudWatchMetrics=true.'
 
   OpenObserveAccessKey:
     Type: String
@@ -845,7 +847,7 @@ Rules:
   ValidateCloudWatchMetrics:
     RuleCondition: !Equals [!Ref EnableCloudWatchMetrics, 'true']
     Assertions:
-      - {AssertDescription: 'OpenObserveMetricsEndpoint required when EnableCloudWatchMetrics=true (different URL than OpenObserveEndpoint — see param description)', Assert: !Not [!Equals [!Ref OpenObserveMetricsEndpoint, '']]}
+      - {AssertDescription: 'OpenObserveMetricsEndpointPrefix required when EnableCloudWatchMetrics=true (e.g., https://<host>/aws/<org> — see param description)', Assert: !Not [!Equals [!Ref OpenObserveMetricsEndpointPrefix, '']]}
       - {AssertDescription: 'CloudWatchMetricsS3BackupBucket required when EnableCloudWatchMetrics=true',                                                          Assert: !Not [!Equals [!Ref CloudWatchMetricsS3BackupBucket, '']]}
   ValidateWAF:
     RuleCondition: !Equals [!Ref EnableWAF, 'true']
@@ -1298,7 +1300,7 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-Metrics'
-        HttpEndpointUrl: !Ref OpenObserveMetricsEndpoint
+        HttpEndpointUrl: !Sub "${OpenObserveMetricsEndpointPrefix}/cloudwatch_metrics/_kinesis_firehose"
         AccessKey: !Ref OpenObserveAccessKey
         S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
       TimeoutInMinutes: 30
