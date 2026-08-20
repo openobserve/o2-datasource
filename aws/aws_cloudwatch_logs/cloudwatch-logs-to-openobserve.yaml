@@ -16,9 +16,11 @@ Parameters:
     Default: 'cloudwatch-logs-stream'
     Description: 'Name for the OpenObserve stream'
 
-  LogGroupName:
+  LogGroupNames:
     Type: String
-    Description: 'CloudWatch Log Group name to stream logs from'
+    AllowedPattern: '^[A-Za-z0-9_./#-]+(,[A-Za-z0-9_./#-]+){0,49}$'
+    ConstraintDescription: 'Between 1 and 50 log group names, comma separated, no spaces'
+    Description: 'CloudWatch Log Group names to stream from. Up to 50, comma separated with no spaces (e.g., /aws/lambda/fn-a,/aws/lambda/fn-b).'
 
   ShardCount:
     Type: Number
@@ -36,6 +38,59 @@ Parameters:
     Default: ''
     Description: 'CloudWatch Logs filter pattern (leave empty to stream all logs)'
 
+Conditions:
+  # Pad LogGroupNames with 49 trailing commas, then split — !Select [i, ...]
+  # returns "" for slots the user didn't fill. Slot 0 is always present
+  # because AllowedPattern requires at least one entry.
+  HasLogGroup2:   !Not [!Equals [!Select [1, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup3:   !Not [!Equals [!Select [2, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup4:   !Not [!Equals [!Select [3, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup5:   !Not [!Equals [!Select [4, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup6:   !Not [!Equals [!Select [5, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup7:   !Not [!Equals [!Select [6, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup8:   !Not [!Equals [!Select [7, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup9:   !Not [!Equals [!Select [8, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup10:  !Not [!Equals [!Select [9, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup11:  !Not [!Equals [!Select [10, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup12:  !Not [!Equals [!Select [11, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup13:  !Not [!Equals [!Select [12, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup14:  !Not [!Equals [!Select [13, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup15:  !Not [!Equals [!Select [14, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup16:  !Not [!Equals [!Select [15, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup17:  !Not [!Equals [!Select [16, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup18:  !Not [!Equals [!Select [17, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup19:  !Not [!Equals [!Select [18, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup20:  !Not [!Equals [!Select [19, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup21:  !Not [!Equals [!Select [20, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup22:  !Not [!Equals [!Select [21, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup23:  !Not [!Equals [!Select [22, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup24:  !Not [!Equals [!Select [23, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup25:  !Not [!Equals [!Select [24, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup26:  !Not [!Equals [!Select [25, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup27:  !Not [!Equals [!Select [26, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup28:  !Not [!Equals [!Select [27, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup29:  !Not [!Equals [!Select [28, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup30:  !Not [!Equals [!Select [29, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup31:  !Not [!Equals [!Select [30, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup32:  !Not [!Equals [!Select [31, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup33:  !Not [!Equals [!Select [32, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup34:  !Not [!Equals [!Select [33, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup35:  !Not [!Equals [!Select [34, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup36:  !Not [!Equals [!Select [35, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup37:  !Not [!Equals [!Select [36, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup38:  !Not [!Equals [!Select [37, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup39:  !Not [!Equals [!Select [38, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup40:  !Not [!Equals [!Select [39, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup41:  !Not [!Equals [!Select [40, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup42:  !Not [!Equals [!Select [41, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup43:  !Not [!Equals [!Select [42, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup44:  !Not [!Equals [!Select [43, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup45:  !Not [!Equals [!Select [44, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup46:  !Not [!Equals [!Select [45, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup47:  !Not [!Equals [!Select [46, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup48:  !Not [!Equals [!Select [47, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup49:  !Not [!Equals [!Select [48, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
+  HasLogGroup50:  !Not [!Equals [!Select [49, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]], ""]]
 Resources:
   # S3 Bucket for Failed Records
   BackupS3Bucket:
@@ -270,22 +325,512 @@ Resources:
                   - 'kinesis:PutRecords'
                 Resource: !GetAtt CloudWatchLogStream.Arn
 
-  # CloudWatch Logs Subscription Filter
-  LogsSubscriptionFilter:
+  # CloudWatch Logs Subscription Filters — one per comma-separated entry in
+  # LogGroupNames. Slot 1 is always created (AllowedPattern requires >=1
+  # entry); slots 2-50 are conditional on the user having provided that many.
+  LogsSubscriptionFilter1:
     Type: AWS::Logs::SubscriptionFilter
-    DependsOn:
-      - CloudWatchLogStream
-      - CloudWatchLogsRole
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
     Properties:
-      LogGroupName: !Ref LogGroupName
+      LogGroupName:  !Select [0, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter2:
+    Condition: HasLogGroup2
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [1, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter3:
+    Condition: HasLogGroup3
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [2, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter4:
+    Condition: HasLogGroup4
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [3, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter5:
+    Condition: HasLogGroup5
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [4, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter6:
+    Condition: HasLogGroup6
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [5, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter7:
+    Condition: HasLogGroup7
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [6, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter8:
+    Condition: HasLogGroup8
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [7, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter9:
+    Condition: HasLogGroup9
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [8, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter10:
+    Condition: HasLogGroup10
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [9, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter11:
+    Condition: HasLogGroup11
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [10, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter12:
+    Condition: HasLogGroup12
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [11, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter13:
+    Condition: HasLogGroup13
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [12, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter14:
+    Condition: HasLogGroup14
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [13, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter15:
+    Condition: HasLogGroup15
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [14, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter16:
+    Condition: HasLogGroup16
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [15, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter17:
+    Condition: HasLogGroup17
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [16, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter18:
+    Condition: HasLogGroup18
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [17, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter19:
+    Condition: HasLogGroup19
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [18, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter20:
+    Condition: HasLogGroup20
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [19, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter21:
+    Condition: HasLogGroup21
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [20, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter22:
+    Condition: HasLogGroup22
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [21, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter23:
+    Condition: HasLogGroup23
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [22, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter24:
+    Condition: HasLogGroup24
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [23, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter25:
+    Condition: HasLogGroup25
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [24, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter26:
+    Condition: HasLogGroup26
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [25, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter27:
+    Condition: HasLogGroup27
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [26, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter28:
+    Condition: HasLogGroup28
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [27, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter29:
+    Condition: HasLogGroup29
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [28, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter30:
+    Condition: HasLogGroup30
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [29, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter31:
+    Condition: HasLogGroup31
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [30, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter32:
+    Condition: HasLogGroup32
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [31, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter33:
+    Condition: HasLogGroup33
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [32, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter34:
+    Condition: HasLogGroup34
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [33, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter35:
+    Condition: HasLogGroup35
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [34, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter36:
+    Condition: HasLogGroup36
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [35, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter37:
+    Condition: HasLogGroup37
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [36, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter38:
+    Condition: HasLogGroup38
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [37, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter39:
+    Condition: HasLogGroup39
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [38, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter40:
+    Condition: HasLogGroup40
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [39, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter41:
+    Condition: HasLogGroup41
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [40, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter42:
+    Condition: HasLogGroup42
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [41, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter43:
+    Condition: HasLogGroup43
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [42, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter44:
+    Condition: HasLogGroup44
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [43, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter45:
+    Condition: HasLogGroup45
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [44, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter46:
+    Condition: HasLogGroup46
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [45, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter47:
+    Condition: HasLogGroup47
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [46, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter48:
+    Condition: HasLogGroup48
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [47, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter49:
+    Condition: HasLogGroup49
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [48, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
+      FilterPattern: !Ref FilterPattern
+      DestinationArn: !GetAtt CloudWatchLogStream.Arn
+      RoleArn: !GetAtt CloudWatchLogsRole.Arn
+
+  LogsSubscriptionFilter50:
+    Condition: HasLogGroup50
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [CloudWatchLogStream, CloudWatchLogsRole]
+    Properties:
+      LogGroupName:  !Select [49, !Split [",", !Join [",", [!Ref LogGroupNames, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"]]]]
       FilterPattern: !Ref FilterPattern
       DestinationArn: !GetAtt CloudWatchLogStream.Arn
       RoleArn: !GetAtt CloudWatchLogsRole.Arn
 
 Outputs:
-  LogGroupName:
-    Description: 'CloudWatch Log Group Name'
-    Value: !Ref LogGroupName
+  LogGroupNames:
+    Description: 'CloudWatch Log Group Names being streamed (comma separated)'
+    Value: !Ref LogGroupNames
 
   KinesisStreamName:
     Description: 'Kinesis Data Stream Name'
@@ -303,10 +848,6 @@ Outputs:
     Description: 'S3 Bucket for Failed Records'
     Value: !Ref BackupS3Bucket
 
-  SubscriptionFilterName:
-    Description: 'CloudWatch Logs Subscription Filter Name'
-    Value: !Ref LogsSubscriptionFilter
-
   NextSteps:
     Description: 'Next Steps'
-    Value: 'Logs from the specified CloudWatch Log Group will now be streamed to OpenObserve automatically'
+    Value: 'Logs from the specified CloudWatch Log Groups will now be streamed to OpenObserve automatically'
