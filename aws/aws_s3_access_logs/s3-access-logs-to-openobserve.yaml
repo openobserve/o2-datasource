@@ -16,9 +16,11 @@ Parameters:
     Default: 's3-access-logs-stream'
     Description: 'Name for the OpenObserve stream'
 
-  SourceBucketName:
+  SourceBucketNames:
     Type: String
-    Description: 'S3 bucket name to monitor (access logs will be enabled for this bucket)'
+    Description: 'Source S3 bucket names whose server access logs should be forwarded. Up to 50, comma separated no spaces. You must enable server access logging on each source bucket yourself, targeting the LogDestinationBucketName created here.'
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](,[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]){0,49}$'
+    ConstraintDescription: 'Between 1 and 50 source bucket names, comma separated, no spaces'
 
   LogDestinationBucketName:
     Type: String
@@ -90,7 +92,18 @@ Resources:
               StringEquals:
                 'aws:SourceAccount': !Ref AWS::AccountId
               ArnLike:
-                'aws:SourceArn': !Sub 'arn:aws:s3:::${SourceBucketName}'
+                # Build a list of source bucket ARNs from the comma-separated SourceBucketNames param:
+                # 1) Split SourceBucketNames on ","
+                # 2) Join back with ",arn:aws:s3:::" as the separator
+                # 3) Prefix with "arn:aws:s3:::" via Sub -> "arn:aws:s3:::b1,arn:aws:s3:::b2,..."
+                # 4) Split again on "," to yield a real YAML list of ARNs
+                'aws:SourceArn': !Split
+                  - ","
+                  - !Sub
+                    - "arn:aws:s3:::${Joined}"
+                    - Joined: !Join
+                        - ",arn:aws:s3:::"
+                        - !Split [",", !Ref SourceBucketNames]
 
   # S3 Bucket for Failed Records
   BackupS3Bucket:
@@ -371,9 +384,9 @@ Resources:
           ErrorOutputPrefix: 'error-logs/'
 
 Outputs:
-  SourceBucketName:
-    Description: 'Source S3 Bucket (monitored bucket)'
-    Value: !Ref SourceBucketName
+  SourceBucketNames:
+    Description: 'Source S3 Buckets (monitored buckets, comma separated)'
+    Value: !Ref SourceBucketNames
 
   AccessLogDestinationBucketName:
     Description: 'S3 Bucket for Access Logs'
@@ -398,7 +411,16 @@ Outputs:
   NextSteps:
     Description: 'Next Steps'
     Value: !Sub |
-      1. S3 Access Logging has been configured automatically for: ${SourceBucketName}
+      1. Enable S3 server access logging on EACH of these source buckets: ${SourceBucketNames}
+         For every source bucket, point its logging target at the destination bucket created here: ${AccessLogDestinationBucket}
+         (prefix: ${LogPrefix})
+         Example (run per source bucket):
+           aws s3api put-bucket-logging --bucket <SOURCE_BUCKET> --bucket-logging-status '{
+             "LoggingEnabled": {
+               "TargetBucket": "${AccessLogDestinationBucket}",
+               "TargetPrefix": "${LogPrefix}"
+             }
+           }'
       2. Access logs will be delivered to: ${AccessLogDestinationBucket}
       3. Lambda will automatically process new logs and send to OpenObserve
       4. Note: S3 Access Logs have eventual consistency (may take hours to appear)
