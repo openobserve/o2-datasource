@@ -16,6 +16,16 @@ Parameters:
     Description: Name of the S3 bucket for Firehose backup.
 
 Resources:
+  # Firehose does not auto-create the log group it delivers errors to — if
+  # missing, delivery-error visibility is silently lost. Create it explicitly
+  # and stack-scope the name so multiple stacks in the same region don't
+  # conflict on it.
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/kinesisfirehose/${AWS::StackName}"
+      RetentionInDays: 14
+
   # IAM Role for CloudWatch Metrics Stream
   # No explicit RoleName — as a nested stack under aws_complete, the parent
   # stack name is long enough that "PrefixRoleName-${AWS::StackName}-${AWS::Region}"
@@ -105,7 +115,7 @@ Resources:
           Prefix: OpenObserve_Metrics/
         CloudWatchLoggingOptions:
           Enabled: true
-          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_Metrics"
+          LogGroupName: !Ref FirehoseLogGroup
           LogStreamName: DeliveryStreamLogs
         RoleARN: !GetAtt FirehoseRole.Arn
 
