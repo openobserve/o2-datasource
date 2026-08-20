@@ -23,7 +23,6 @@ Resources:
   FirehoseRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "OpenObserve_FirehoseRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -55,7 +54,6 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "OpenObserve_LambdaRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -91,7 +89,6 @@ Resources:
   WAFProcessorLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "OpenObserve_WAFProcessor-${AWS::StackName}"
       Handler: index.handler
       Runtime: python3.9
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -145,7 +142,6 @@ Resources:
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
     Properties:
-      DeliveryStreamName: !Sub "OpenObserve_Firehose-${AWS::StackName}"
       DeliveryStreamType: DirectPut
       HttpEndpointDestinationConfiguration:
         EndpointConfiguration:
