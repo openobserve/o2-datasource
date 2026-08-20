@@ -404,8 +404,8 @@ Parameters:
 
   CloudWatchStreamName:
     Type: String
-    Default: 'cloudwatch-logs-stream'
-    Description: '[CloudWatch Logs] OpenObserve stream name'
+    Default: 'cloudwatch_logs'
+    Description: '[CloudWatch Logs] OpenObserve stream name — becomes the stream segment in the derived Firehose URL (/aws/<org>/<StreamName>/_kinesis_firehose).'
 
   CloudWatchShardCount:
     Type: Number
@@ -876,7 +876,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_api_gateway_logs/apigateway-logs-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref ApiGatewayStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         ApiGatewayId: !Ref ApiGatewayId
         StageName: !Ref ApiGatewayStageName
@@ -909,7 +914,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudfront/cloudfront-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref CloudFrontStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         CloudFrontDistributionIds: !If [CloudFrontDistributionIdsProvided, !Ref CloudFrontDistributionIds, !Ref CloudFrontDistributionId]
         BackupS3BucketName: !Ref CloudFrontBackupBucket
@@ -940,7 +950,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudwatch_logs/cloudwatch-logs-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref CloudWatchStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         LogGroupNames: !If [CloudWatchLogGroupNamesProvided, !Ref CloudWatchLogGroupNames, !Ref CloudWatchLogGroupName]
         BackupS3BucketName: !Ref CloudWatchBackupBucket
@@ -971,7 +986,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cloudwatch_logs_account_wide/cloudwatch-logs-account-wide-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref CloudWatchStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         BackupS3BucketName: !Ref CloudWatchBackupBucket
         StreamName: !Ref CloudWatchStreamName
@@ -1000,7 +1020,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_cognito_logs/cognito-events-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref CognitoStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         UserPoolId: !Ref CognitoUserPoolId
         StreamName: !Ref CognitoStreamName
@@ -1029,7 +1054,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_dynamodb_logs/dynamodb-streams-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref DynamoDBStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         DynamoDBTableNames: !If [DynamoDBTableNamesProvided, !Ref DynamoDBTableNames, !Ref DynamoDBTableName]
         BackupS3BucketName: !Ref DynamoDBBackupBucket
@@ -1086,7 +1116,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_eventbridge_events/eventbridge-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref EventBridgeStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         RuleName: !Ref EventBridgeRuleName
         EventPattern: !Ref EventBridgeEventPattern
@@ -1116,7 +1151,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_kinesis_streams/kinesis-to-openobserve-firehose.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref KinesisStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         KinesisStreamArn: !Ref KinesisStreamArn
         StreamName: !Ref KinesisStreamName
@@ -1147,7 +1187,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_rds_logs/rds-logs-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref RDSStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         LogGroupNames: !If [RDSLogGroupNamesProvided, !Ref RDSLogGroupNames, !Ref RDSLogGroupName]
         BackupS3BucketName: !Ref RDSBackupBucket
@@ -1179,7 +1224,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_route53_logs/route53-logs-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref Route53StreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         HostedZoneIds: !If [Route53HostedZoneIdsProvided, !Ref Route53HostedZoneIds, !Ref Route53HostedZoneId]
         BackupS3BucketName: !Ref Route53BackupBucket
@@ -1209,7 +1259,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_s3_access_logs/s3-access-logs-to-openobserve.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref S3StreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         SourceBucketNames: !If [S3SourceBucketNamesProvided, !Ref S3SourceBucketNames, !Ref S3SourceBucketName]
         LogDestinationBucketName: !Ref S3LogDestinationBucket
@@ -1240,7 +1295,12 @@ Resources:
         - 'https://${TemplateS3Bucket}.s3.${TemplateRegion}.${AWS::URLSuffix}/${TemplateS3Prefix}/aws_vpc_flow_logs/vpc-flowlogs-to-openobserve-firehose.yaml'
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
-        OpenObserveEndpoint: !Ref OpenObserveEndpoint
+        OpenObserveEndpoint: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/${Stream}/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+            Stream: !Ref VPCStreamName
         OpenObserveAccessKey: !Ref OpenObserveAccessKey
         VpcIds: !If [VpcIdsProvided, !Ref VpcIds, !Ref VpcId]
         BackupS3BucketName: !Ref VPCBackupBucket
@@ -1303,7 +1363,14 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-CloudTrail'
-        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        # Auto-derive the Firehose URL from OpenObserveEndpoint, replacing the
+        # user-provided stream segment with the fixed 'cloudtrail_logs' target
+        # so OpenObserve's /aws/ ingester routes CloudTrail records correctly.
+        HttpEndpointUrl: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/cloudtrail_logs/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
         AccessKey: !Ref OpenObserveAccessKey
         S3BucketCloudTrailName: !Ref CloudTrailS3BucketName
         S3BackupBucket: !Ref CloudTrailS3BackupBucket
@@ -1371,7 +1438,13 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-WAF'
-        HttpEndpointUrl: !Ref OpenObserveEndpoint
+        # Auto-derive the Firehose URL, hardcoding 'waf_logs' as the stream so
+        # OpenObserve's /aws/ ingester routes WAF records to that stream.
+        HttpEndpointUrl: !Sub
+          - "${Scheme}//${Host}/aws/${Org}/waf_logs/_kinesis_firehose"
+          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
+            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
+            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
         AccessKey: !Ref OpenObserveAccessKey
         S3BucketWAFName: !Ref WAFS3BucketName
         S3BackupBucket: !Ref WAFS3BackupBucket
