@@ -16,11 +16,11 @@ Parameters:
     Default: 'route53-query-logs'
     Description: 'Name for the OpenObserve stream'
 
-  HostedZoneIds:
+  HostedZoneId:
     Type: String
-    AllowedPattern: '^Z[A-Z0-9]+(,Z[A-Z0-9]+){0,49}$'
-    ConstraintDescription: 'Between 1 and 50 Hosted Zone IDs (each starts with Z), comma separated, no spaces'
-    Description: 'Route53 Hosted Zone IDs to capture query logs from. Up to 50, comma separated no spaces (e.g., Z1D633PJN98FT9,Z2C633PJN98FTA). NOTE: Route53 query logging requires this stack to be deployed in us-east-1.'
+    Description: 'Route53 Hosted Zone ID to capture query logs from'
+    AllowedPattern: '^Z[A-Z0-9]+$'
+    ConstraintDescription: 'Must be a valid Route53 Hosted Zone ID (starts with Z)'
 
   ShardCount:
     Type: Number
@@ -54,31 +54,13 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # Shared CloudWatch Log Group for all monitored Route53 zones.
-  # (Route53 QueryLoggingConfig can point multiple zones at one log group.)
+  # CloudWatch Log Group for Route53 Query Logs
+  # CloudWatch Log Group for Route53
   Route53LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/aws/route53/${AWS::StackName}'
+      LogGroupName: !Sub '/aws/route53/${HostedZoneId}'
       RetentionInDays: 7
-
-  # Route53 requires an explicit resource policy on the log group to write to it.
-  Route53LogGroupPolicy:
-    Type: AWS::Logs::ResourcePolicy
-    Properties:
-      PolicyName: !Sub '${AWS::StackName}-route53-logs'
-      PolicyDocument: !Sub |
-        {
-          "Version": "2012-10-17",
-          "Statement": [{
-            "Sid": "Route53LogsToCloudWatchLogs",
-            "Effect": "Allow",
-            "Principal": {"Service": "route53.amazonaws.com"},
-            "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
-            "Resource": "${Route53LogGroup.Arn}"
-          }]
-        }
-
 
   # Kinesis Data Stream for Route53 Logs
   Route53LogStream:
@@ -373,9 +355,9 @@ Resources:
       RoleArn: !GetAtt CloudWatchLogsRole.Arn
 
 Outputs:
-  HostedZoneIds:
-    Description: 'Route53 Hosted Zone IDs monitored (comma separated)'
-    Value: !Ref HostedZoneIds
+  HostedZoneId:
+    Description: 'Route53 Hosted Zone ID'
+    Value: !Ref HostedZoneId
 
   LogGroupName:
     Description: 'CloudWatch Log Group Name for Route53'
@@ -401,8 +383,12 @@ Outputs:
     Description: 'S3 Bucket for Failed Records'
     Value: !Ref BackupS3Bucket
 
+  SubscriptionFilterName:
+    Description: 'CloudWatch Logs Subscription Filter Name'
+    Value: !Ref LogsSubscriptionFilter
+
   NextSteps:
     Description: 'Next Steps'
     Value: !Sub |
-      CloudWatch Logs pipeline is ready. For EACH hosted zone in HostedZoneIds, enable Route53 query logging with:
-      aws route53 create-query-logging-config --hosted-zone-id <ZONE_ID> --cloudwatch-logs-log-group-arn ${Route53LogGroup.Arn}
+      CloudWatch Logs streaming is ready. Enable Route53 query logging with:
+      aws route53 create-query-logging-config --hosted-zone-id ${HostedZoneId} --cloudwatch-logs-log-group-arn ${Route53LogGroup.Arn}

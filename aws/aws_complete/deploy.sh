@@ -87,10 +87,8 @@ collect_common_config() {
 upload_templates() {
     print_header "Step 2: Upload Templates to S3"
 
-    BUCKET_REGION=""
-
     # Create bucket if it doesn't exist
-    if ! aws s3api head-bucket --bucket "$TEMPLATE_BUCKET" &>/dev/null; then
+    if ! aws s3 ls "s3://$TEMPLATE_BUCKET" --region "$REGION" &>/dev/null; then
         print_info "Creating S3 bucket: $TEMPLATE_BUCKET"
         if [ "$REGION" = "us-east-1" ]; then
             aws s3api create-bucket --bucket "$TEMPLATE_BUCKET" --region "$REGION"
@@ -103,34 +101,14 @@ upload_templates() {
             --bucket "$TEMPLATE_BUCKET" \
             --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
         print_success "Bucket created: $TEMPLATE_BUCKET"
-        BUCKET_REGION="$REGION"
     else
         print_info "Using existing bucket: $TEMPLATE_BUCKET"
-    fi
-
-    # Resolve the bucket's ACTUAL region. The AWS CLI silently follows cross-region
-    # redirects, but CloudFormation does not — a TemplateURL built with the wrong
-    # region fails the nested stacks with "The bucket you are attempting to access
-    # must be addressed using the specified endpoint."
-    if [ -z "$BUCKET_REGION" ]; then
-        BUCKET_REGION=$(aws s3api get-bucket-location --bucket "$TEMPLATE_BUCKET" \
-            --query 'LocationConstraint' --output text 2>/dev/null || echo "")
-        # us-east-1 is reported as None/null; EU legacy buckets report "EU"
-        case "$BUCKET_REGION" in
-            None|null|"") BUCKET_REGION="us-east-1" ;;
-            EU)           BUCKET_REGION="eu-west-1" ;;
-        esac
-    fi
-
-    if [ "$BUCKET_REGION" != "$REGION" ]; then
-        print_warning "Template bucket '$TEMPLATE_BUCKET' lives in $BUCKET_REGION, but the stack deploys to $REGION."
-        print_warning "Passing TemplateS3Region=$BUCKET_REGION so nested stacks use the correct S3 endpoint."
     fi
 
     # Sync all yaml files from aws/ directory (excluding deploy_all/deploy.sh, cleanup.sh)
     print_info "Uploading templates from $AWS_DIR → s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/"
     aws s3 sync "$AWS_DIR" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/" \
-        --region "$BUCKET_REGION" \
+        --region "$REGION" \
         --include "*.yaml" \
         --exclude "*.sh" \
         --exclude "*.md" \
@@ -193,7 +171,7 @@ collect_service_specific_params() {
     # CloudFront
     if [ "$ENABLE_CF" = "true" ]; then
         print_header "CloudFront Parameters"
-        read -p "  CloudFront Distribution IDs — up to 10, comma-separated: " CF_DIST_ID
+        read -p "  CloudFront Distribution ID: " CF_DIST_ID
         read -p "  Backup S3 bucket name (globally unique): " CF_BACKUP_BUCKET
         CF_STREAM="${CF_STREAM:-cloudfront_access_logs}"
     fi
@@ -201,7 +179,7 @@ collect_service_specific_params() {
     # CloudWatch Logs
     if [ "$ENABLE_CWL" = "true" ]; then
         print_header "CloudWatch Logs Parameters"
-        read -p "  Log Group names — up to 50, comma-separated (e.g., /aws/lambda/fn-a,/aws/lambda/fn-b): " CWL_LOG_GROUP
+        read -p "  Log Group name (e.g., /aws/lambda/my-function): " CWL_LOG_GROUP
         read -p "  Backup S3 bucket name (globally unique): " CWL_BACKUP_BUCKET
         CWL_STREAM="${CWL_STREAM:-cloudwatch-logs-stream}"
     fi
@@ -216,7 +194,7 @@ collect_service_specific_params() {
     # DynamoDB
     if [ "$ENABLE_DYNAMO" = "true" ]; then
         print_header "DynamoDB Parameters"
-        read -p "  DynamoDB table names — up to 50, comma-separated: " DYNAMO_TABLE
+        read -p "  DynamoDB table name: " DYNAMO_TABLE
         read -p "  Backup S3 bucket name (globally unique): " DYNAMO_BACKUP_BUCKET
         DYNAMO_STREAM="${DYNAMO_STREAM:-dynamodb-streams}"
     fi
@@ -250,7 +228,7 @@ collect_service_specific_params() {
     # RDS
     if [ "$ENABLE_RDS" = "true" ]; then
         print_header "RDS Parameters"
-        read -p "  CloudWatch Log Groups — up to 50, comma-separated (e.g., /aws/rds/instance/db-a/error,/aws/rds/instance/db-a/slowquery): " RDS_LOG_GROUP
+        read -p "  CloudWatch Log Group (e.g., /aws/rds/instance/my-db/error): " RDS_LOG_GROUP
         read -p "  Backup S3 bucket name (globally unique): " RDS_BACKUP_BUCKET
         read -p "  RDS instance identifier (optional): " RDS_INSTANCE_ID
         RDS_STREAM="${RDS_STREAM:-rds-logs}"
@@ -259,7 +237,7 @@ collect_service_specific_params() {
     # Route53
     if [ "$ENABLE_R53" = "true" ]; then
         print_header "Route53 Parameters"
-        read -p "  Hosted Zone IDs — up to 50, comma-separated (each starts with Z): " R53_HZ_ID
+        read -p "  Hosted Zone ID (starts with Z): " R53_HZ_ID
         read -p "  Backup S3 bucket name (globally unique): " R53_BACKUP_BUCKET
         R53_STREAM="${R53_STREAM:-route53-query-logs}"
     fi
@@ -267,7 +245,7 @@ collect_service_specific_params() {
     # S3 Access Logs
     if [ "$ENABLE_S3" = "true" ]; then
         print_header "S3 Access Logs Parameters"
-        read -p "  Source bucket names — up to 50, comma-separated: " S3_SOURCE_BUCKET
+        read -p "  Source bucket to monitor: " S3_SOURCE_BUCKET
         read -p "  Log destination bucket name (globally unique, for access log files): " S3_LOG_DEST_BUCKET
         read -p "  Backup S3 bucket name (globally unique, for Firehose failures): " S3_BACKUP_BUCKET
         S3_STREAM="${S3_STREAM:-s3-access-logs-stream}"
@@ -276,7 +254,7 @@ collect_service_specific_params() {
     # VPC Flow Logs
     if [ "$ENABLE_VPC" = "true" ]; then
         print_header "VPC Flow Logs Parameters"
-        read -p "  VPC IDs — up to 50, comma-separated (e.g., vpc-abc123def456,vpc-abc123def457): " VPC_ID
+        read -p "  VPC ID (e.g., vpc-xxxxxxxx): " VPC_ID
         read -p "  Backup S3 bucket name (globally unique): " VPC_BACKUP_BUCKET
         VPC_STREAM="${VPC_STREAM:-vpc-flow-logs-stream}"
         VPC_TRAFFIC_TYPE="${VPC_TRAFFIC_TYPE:-ALL}"
@@ -323,7 +301,6 @@ collect_service_specific_params() {
 build_parameters() {
     PARAMS="TemplateS3Bucket=${TEMPLATE_BUCKET}"
     PARAMS="$PARAMS TemplateS3Prefix=${TEMPLATE_PREFIX}"
-    PARAMS="$PARAMS TemplateS3Region=${BUCKET_REGION:-$REGION}"
     PARAMS="$PARAMS OpenObserveEndpoint=${OO_ENDPOINT}"
     PARAMS="$PARAMS OpenObserveAccessKey=${OO_ACCESS_KEY}"
 
@@ -351,18 +328,18 @@ build_parameters() {
     [ -n "$APIGW_BACKUP_BUCKET" ] && PARAMS="$PARAMS ApiGatewayBackupBucket=${APIGW_BACKUP_BUCKET}"
     [ -n "$APIGW_STREAM" ]        && PARAMS="$PARAMS ApiGatewayStreamName=${APIGW_STREAM}"
 
-    [ -n "$CF_DIST_ID" ]          && PARAMS="$PARAMS CloudFrontDistributionIds=${CF_DIST_ID}"
+    [ -n "$CF_DIST_ID" ]          && PARAMS="$PARAMS CloudFrontDistributionId=${CF_DIST_ID}"
     [ -n "$CF_BACKUP_BUCKET" ]    && PARAMS="$PARAMS CloudFrontBackupBucket=${CF_BACKUP_BUCKET}"
     [ -n "$CF_STREAM" ]           && PARAMS="$PARAMS CloudFrontStreamName=${CF_STREAM}"
 
-    [ -n "$CWL_LOG_GROUP" ]       && PARAMS="$PARAMS CloudWatchLogGroupNames=${CWL_LOG_GROUP}"
+    [ -n "$CWL_LOG_GROUP" ]       && PARAMS="$PARAMS CloudWatchLogGroupName=${CWL_LOG_GROUP}"
     [ -n "$CWL_BACKUP_BUCKET" ]   && PARAMS="$PARAMS CloudWatchBackupBucket=${CWL_BACKUP_BUCKET}"
     [ -n "$CWL_STREAM" ]          && PARAMS="$PARAMS CloudWatchStreamName=${CWL_STREAM}"
 
     [ -n "$COGNITO_POOL_ID" ]     && PARAMS="$PARAMS CognitoUserPoolId=${COGNITO_POOL_ID}"
     [ -n "$COGNITO_STREAM" ]      && PARAMS="$PARAMS CognitoStreamName=${COGNITO_STREAM}"
 
-    [ -n "$DYNAMO_TABLE" ]        && PARAMS="$PARAMS DynamoDBTableNames=${DYNAMO_TABLE}"
+    [ -n "$DYNAMO_TABLE" ]        && PARAMS="$PARAMS DynamoDBTableName=${DYNAMO_TABLE}"
     [ -n "$DYNAMO_BACKUP_BUCKET" ]&& PARAMS="$PARAMS DynamoDBBackupBucket=${DYNAMO_BACKUP_BUCKET}"
     [ -n "$DYNAMO_STREAM" ]       && PARAMS="$PARAMS DynamoDBStreamName=${DYNAMO_STREAM}"
 
@@ -378,21 +355,21 @@ build_parameters() {
     [ -n "$KINESIS_ARN" ]         && PARAMS="$PARAMS KinesisStreamArn=${KINESIS_ARN}"
     [ -n "$KINESIS_STREAM" ]      && PARAMS="$PARAMS KinesisStreamName=${KINESIS_STREAM}"
 
-    [ -n "$RDS_LOG_GROUP" ]       && PARAMS="$PARAMS RDSLogGroupNames=${RDS_LOG_GROUP}"
+    [ -n "$RDS_LOG_GROUP" ]       && PARAMS="$PARAMS RDSLogGroupName=${RDS_LOG_GROUP}"
     [ -n "$RDS_BACKUP_BUCKET" ]   && PARAMS="$PARAMS RDSBackupBucket=${RDS_BACKUP_BUCKET}"
     [ -n "$RDS_STREAM" ]          && PARAMS="$PARAMS RDSStreamName=${RDS_STREAM}"
     [ -n "$RDS_INSTANCE_ID" ]     && PARAMS="$PARAMS RDSInstanceIdentifier=${RDS_INSTANCE_ID}"
 
-    [ -n "$R53_HZ_ID" ]           && PARAMS="$PARAMS Route53HostedZoneIds=${R53_HZ_ID}"
+    [ -n "$R53_HZ_ID" ]           && PARAMS="$PARAMS Route53HostedZoneId=${R53_HZ_ID}"
     [ -n "$R53_BACKUP_BUCKET" ]   && PARAMS="$PARAMS Route53BackupBucket=${R53_BACKUP_BUCKET}"
     [ -n "$R53_STREAM" ]          && PARAMS="$PARAMS Route53StreamName=${R53_STREAM}"
 
-    [ -n "$S3_SOURCE_BUCKET" ]    && PARAMS="$PARAMS S3SourceBucketNames=${S3_SOURCE_BUCKET}"
+    [ -n "$S3_SOURCE_BUCKET" ]    && PARAMS="$PARAMS S3SourceBucketName=${S3_SOURCE_BUCKET}"
     [ -n "$S3_LOG_DEST_BUCKET" ]  && PARAMS="$PARAMS S3LogDestinationBucket=${S3_LOG_DEST_BUCKET}"
     [ -n "$S3_BACKUP_BUCKET" ]    && PARAMS="$PARAMS S3AccessLogsBackupBucket=${S3_BACKUP_BUCKET}"
     [ -n "$S3_STREAM" ]           && PARAMS="$PARAMS S3StreamName=${S3_STREAM}"
 
-    [ -n "$VPC_ID" ]              && PARAMS="$PARAMS VpcIds=${VPC_ID}"
+    [ -n "$VPC_ID" ]              && PARAMS="$PARAMS VpcId=${VPC_ID}"
     [ -n "$VPC_BACKUP_BUCKET" ]   && PARAMS="$PARAMS VPCBackupBucket=${VPC_BACKUP_BUCKET}"
     [ -n "$VPC_STREAM" ]          && PARAMS="$PARAMS VPCStreamName=${VPC_STREAM}"
     [ -n "$VPC_TRAFFIC_TYPE" ]    && PARAMS="$PARAMS VPCTrafficType=${VPC_TRAFFIC_TYPE}"
