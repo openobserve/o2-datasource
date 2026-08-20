@@ -247,6 +247,11 @@ Resources:
           Enabled: true
           LogGroupName: !Ref FirehoseLogGroup
           LogStreamName: !Ref FirehoseLogStream
+        # Top-level RoleARN on HttpEndpointDestinationConfiguration is required
+        # by the Firehose API when CloudWatchLoggingOptions is set — otherwise
+        # the CreateDeliveryStream call fails with
+        # "RoleArn must be provided when CloudWatchLoggingOptions exists".
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
 
   # IAM Role CloudWatch Logs assumes when it writes subscription events into
   # our Kinesis stream. Also referenced by the AccountPolicy below.
@@ -272,11 +277,18 @@ Resources:
                 Resource: !GetAtt CloudWatchLogStream.Arn
 
   # The single account-wide subscription — no fan-out, no enumeration.
-  # SelectionCriteria excludes the log groups our own stack creates
-  # (/aws/kinesisfirehose/<stack>, /aws/lambda/<stack>-*) to prevent the
-  # infinite loop where Firehose's own delivery-error logs would flow back
-  # through Firehose. Every OTHER current or future log group in this region
-  # of this account is subscribed automatically.
+  # SelectionCriteria excludes our own Firehose delivery-error log group to
+  # prevent the infinite loop where Firehose delivery-error logs would flow
+  # back through Firehose. Every OTHER current or future log group in this
+  # region of this account is subscribed automatically.
+  #
+  # Grammar note: AWS's SelectionCriteria for SUBSCRIPTION_FILTER_POLICY only
+  # supports `LogGroupName IN [...]` / `LogGroupName NOT IN [...]` with EXACT
+  # log group names, not prefixes or wildcards. The Lambda transformer's
+  # auto-created /aws/lambda/<gen-name> log group is not excluded — safe in
+  # practice because the transformer only writes on unhandled exceptions, and
+  # forwarding those doesn't create a loop (the transformer succeeds on the
+  # re-processed JSON record).
   #
   # AWS hard limit: 1 SUBSCRIPTION_FILTER_POLICY per account per region.
   # If another tool (Datadog, Splunk, etc.) already deployed one, this create
@@ -286,11 +298,12 @@ Resources:
     DependsOn:
       - CloudWatchLogsRole
       - CloudWatchLogStream
+      - FirehoseLogGroup
     Properties:
       PolicyName: !Sub '${AWS::StackName}-openobserve-all-logs'
       PolicyType: SUBSCRIPTION_FILTER_POLICY
       Scope: ALL
-      SelectionCriteria: !Sub 'LogGroupNamePrefix NOT IN ["/aws/kinesisfirehose/${AWS::StackName}", "/aws/lambda/${AWS::StackName}"]'
+      SelectionCriteria: !Sub 'LogGroupName NOT IN ["/aws/kinesisfirehose/${AWS::StackName}"]'
       PolicyDocument: !Sub |
         {
           "DestinationArn": "${CloudWatchLogStream.Arn}",
