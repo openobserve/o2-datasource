@@ -19,6 +19,14 @@ Parameters:
     Description: Name of the S3 bucket for Firehose backup. This must either be the same as the CloudTrail bucket or a separate bucket.
 
 Resources:
+  # Firehose does not auto-create its delivery-error log group. Create it
+  # explicitly and stack-scope the name so multiple stacks don't collide.
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/kinesisfirehose/${AWS::StackName}"
+      RetentionInDays: 14
+
   # IAM Role for Kinesis Firehose
   FirehoseRole:
     Type: AWS::IAM::Role
@@ -192,7 +200,7 @@ Resources:
           Prefix: OpenObserve_CloudTrail/
         CloudWatchLoggingOptions:
           Enabled: true
-          LogGroupName: !Sub "/aws/kinesisfirehose/OpenObserve_CloudTrail"
+          LogGroupName: !Ref FirehoseLogGroup
           LogStreamName: DeliveryStreamLogs
         RoleARN: !GetAtt FirehoseRole.Arn
 
