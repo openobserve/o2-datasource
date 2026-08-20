@@ -306,8 +306,8 @@ collect_service_specific_params() {
     # CloudWatch Metrics
     if [ "$ENABLE_CW_METRICS" = "true" ]; then
         print_header "CloudWatch All Metrics Parameters"
-        print_info "CloudWatch Metrics uses a dedicated /aws/ endpoint; the fixed suffix /cloudwatch_metrics/_kinesis_firehose is appended automatically"
-        read -p "  OpenObserve metrics endpoint PREFIX (e.g., https://<host>/aws/<org>) — no trailing slash: " OO_METRICS_ENDPOINT_PREFIX
+        print_info "Metrics URL is auto-derived from OpenObserveEndpoint. Only fill the prefix override if you're on self-hosted OpenObserve behind a subpath."
+        read -p "  OpenObserve metrics endpoint PREFIX override — press Enter to auto-derive (e.g., https://<host>/aws/<org>): " OO_METRICS_ENDPOINT_PREFIX
         read -p "  Backup S3 bucket name (globally unique): " CW_METRICS_BUCKET
     fi
 
