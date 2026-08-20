@@ -307,11 +307,11 @@ Resources:
                   ParameterValue: !GetAtt LogTransformFunction.Arn
                 - ParameterName: RoleArn
                   ParameterValue: !GetAtt FirehoseDeliveryRole.Arn
-                # Cap Firehose→Lambda input at 0.5 MB so the transformed
+                # Cap Firehose→Lambda input at 0.2 MB (AWS minimum) so the transformed
                 # newline-JSON output stays under Lambda's 6 MB response cap
-                # even when CW Logs subscription payloads gunzip 5-10x.
+                # even when CW Logs subscription payloads gunzip 5-20x on repetitive account-wide log volume.
                 - ParameterName: BufferSizeInMBs
-                  ParameterValue: '0.5'
+                  ParameterValue: '0.2'
                 - ParameterName: BufferIntervalInSeconds
                   ParameterValue: '60'
 

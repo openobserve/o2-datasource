@@ -254,11 +254,11 @@ Resources:
                 # AWS Lambda has a hard 6 MB synchronous-response cap. CW Logs
                 # subscription payloads gunzip ~5-10x, and account-wide mode
                 # can send a lot of data per invocation. Cap Firehose's input
-                # per-invocation at 0.5 MB so the Lambda's transformed output
+                # per-invocation at 0.2 MB (AWS minimum) so the Lambda's transformed output
                 # (newline-JSON + base64) stays under the 6 MB response limit
                 # even at 10x expansion. Trade-off: more Lambda invocations.
                 - ParameterName: BufferSizeInMBs
-                  ParameterValue: '0.5'
+                  ParameterValue: '0.2'
                 - ParameterName: BufferIntervalInSeconds
                   ParameterValue: '60'
         CloudWatchLoggingOptions:
