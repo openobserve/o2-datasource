@@ -46,7 +46,7 @@ Resources:
           - Id: DeleteOldLogs
             Status: Enabled
             ExpirationInDays: 30
-  
+
   S3BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -56,7 +56,10 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: "arn:aws:iam::${ELBAccountId}:root"
+              # Wrap the parameter reference in !Sub so CloudFormation expands
+              # ${ELBAccountId} at deploy time. Without !Sub this is a literal
+              # string and fails IAM ARN validation (cfn-lint E1029 / E3512).
+              AWS: !Sub "arn:aws:iam::${ELBAccountId}:root"
             Action: "s3:PutObject"
             Resource:
               - !Sub "arn:aws:s3:::${S3BucketName}/${AccessLogsPrefix}/AWSLogs/${AWSAccountId}/*"
@@ -106,7 +109,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 60
       Environment:

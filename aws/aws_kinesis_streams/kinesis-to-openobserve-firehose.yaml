@@ -165,6 +165,11 @@ Resources:
             Condition:
               StringEquals:
                 sts:ExternalId: !Ref AWS::AccountId
+      # Split into two policy blocks so the Lambda-invoke policy only exists
+      # when EnableTransformation=true. Previously a single policy had a
+      # statement with `Resource: !If [TransformationEnabled, arn, NoValue]`
+      # which, when the condition was false, collapsed to a Statement with
+      # NO Resource key — invalid IAM (cfn-lint E3510).
       Policies:
         - PolicyName: KinesisReadPolicy
           PolicyDocument:
@@ -192,18 +197,6 @@ Resources:
                 Resource:
                   - !GetAtt BackupBucket.Arn
                   - !Sub '${BackupBucket.Arn}/*'
-        - PolicyName: LambdaInvokePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                  - lambda:GetFunctionConfiguration
-                Resource: !If
-                  - TransformationEnabled
-                  - !GetAtt TransformationFunction.Arn
-                  - !Ref AWS::NoValue
         - PolicyName: CloudWatchLogsPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -214,6 +207,29 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/${AWS::StackName}:*'
+      # ManagedPolicyArns lets us attach a whole extra policy conditionally
+      # without leaving an empty Statement behind. When transformation is off
+      # we simply don't attach any managed policy for Lambda invoke — the
+      # inline LambdaInvokeAttachment below (also conditional) handles it.
+
+  # Conditional inline Lambda-invoke policy attached to FirehoseRole.
+  # Only created when transformation is enabled, so there is never a
+  # Statement without a valid Resource.
+  FirehoseLambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Condition: TransformationEnabled
+    Properties:
+      PolicyName: LambdaInvokePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+              - lambda:GetFunctionConfiguration
+            Resource: !GetAtt TransformationFunction.Arn
+      Roles:
+        - !Ref FirehoseRole
 
   # Kinesis Firehose Delivery Stream
   DeliveryStream:
