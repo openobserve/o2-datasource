@@ -68,8 +68,19 @@ jobs:
             UPLOADED=$((UPLOADED + 1))
           done < <(find aws/ -type f \( -name "*.yaml" -o -name "*.yml" \) | sort)
 
+          # The master template is ALSO published flat at <prefix>/aws_complete.yaml.
+          # The launch button in the UI points at that key, and a stale copy sitting
+          # there is worse than none: it still resolves its children from the folder
+          # paths, so an old master silently pairs with new child templates and fails
+          # with errors like "Parameters: [LogGroupNames] must have values". Writing
+          # both keys on every run keeps them from drifting apart.
           echo ""
-          echo "Uploaded ${UPLOADED} file(s)."
+          echo "  aws/aws_complete/aws_complete.yaml -> s3://${S3_BUCKET}/${S3_PATH}aws_complete.yaml (flat alias)"
+          aws s3 cp aws/aws_complete/aws_complete.yaml \
+            "s3://${S3_BUCKET}/${S3_PATH}aws_complete.yaml" --only-show-errors
+
+          echo ""
+          echo "Uploaded ${UPLOADED} file(s) plus the flat aws_complete.yaml alias."
           if [ "$UPLOADED" -eq 0 ]; then
             echo "Error: no YAML templates found under aws/"
             exit 1
