@@ -13,9 +13,31 @@ Parameters:
     Description: 'OpenObserve HTTP endpoint URL for CloudWatch Metrics — must use the /aws/ path prefix and the fixed stream name cloudwatch_metrics (e.g., https://<host>/aws/<org>/cloudwatch_metrics/_kinesis_firehose). Different from the generic /api/ path used for logs services.'
   S3BackupBucket:
     Type: String
-    Description: Name of the S3 bucket for Firehose backup.
+    Default: ''
+    Description: 'OPTIONAL — name of an EXISTING S3 bucket for Firehose failed-records backup. Leave blank to have CFN create a fresh bucket (auto-generated unique name, AES256 encryption, all public access blocked). Provide a name to reuse an existing bucket you already manage.'
+
+Conditions:
+  # Blank means create a fresh bucket; non-blank means reuse the passed-in one.
+  CreateBackupBucket: !Equals [!Ref S3BackupBucket, '']
 
 Resources:
+  # S3 bucket for records Firehose couldn't deliver. Only created when the
+  # user leaves S3BackupBucket blank.
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateBackupBucket
+    Properties:
+      # No BucketName — CFN auto-generates, guaranteeing uniqueness.
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   # Firehose does not auto-create the log group it delivers errors to — if
   # missing, delivery-error visibility is silently lost. Create it explicitly
   # and stack-scope the name so multiple stacks in the same region don't
@@ -83,8 +105,8 @@ Resources:
                   - s3:GetBucketLocation
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:aws:s3:::${S3BackupBucket}"
-                  - !Sub "arn:aws:s3:::${S3BackupBucket}/*"
+                  - !If [CreateBackupBucket, !GetAtt BackupBucket.Arn, !Sub "arn:aws:s3:::${S3BackupBucket}"]
+                  - !If [CreateBackupBucket, !Sub "${BackupBucket.Arn}/*", !Sub "arn:aws:s3:::${S3BackupBucket}/*"]
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
@@ -121,7 +143,7 @@ Resources:
         S3BackupMode: FailedDataOnly
         S3Configuration:
           RoleARN: !GetAtt FirehoseRole.Arn
-          BucketARN: !Sub "arn:aws:s3:::${S3BackupBucket}"
+          BucketARN: !If [CreateBackupBucket, !GetAtt BackupBucket.Arn, !Sub "arn:aws:s3:::${S3BackupBucket}"]
           Prefix: OpenObserve_Metrics/
         CloudWatchLoggingOptions:
           Enabled: true
@@ -137,8 +159,8 @@ Outputs:
     Description: Name of the Kinesis Firehose.
     Value: !Ref KinesisFirehose
   BackupBucketName:
-    Description: Name of the backup bucket being used.
-    Value: !Ref S3BackupBucket
+    Description: Name of the backup bucket being used (auto-generated if input was blank).
+    Value: !If [CreateBackupBucket, !Ref BackupBucket, !Ref S3BackupBucket]
   WhereToFindData:
     Description: Where the CloudWatch metrics land in OpenObserve.
     Value: "OpenObserve UI -> Logs -> stream 'cloudwatch_metrics' (the /aws/.../cloudwatch_metrics/_kinesis_firehose ingester writes to a Logs-type stream with that fixed name). Query with SQL, e.g. SELECT namespace, metric_name, value FROM cloudwatch_metrics WHERE namespace = 'AWS/EC2'."

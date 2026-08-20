@@ -207,7 +207,7 @@ collect_service_specific_params() {
         print_header "CloudWatch Logs Parameters"
         print_info "Leave 'Log Group names' BLANK for account-wide auto-discovery (subscribes every log group in the region via one AccountPolicy). AWS allows only 1 such policy per account per region."
         read -p "  Log Group names — up to 50, comma-separated (BLANK for account-wide): " CWL_LOG_GROUP
-        read -p "  Backup S3 bucket name (globally unique): " CWL_BACKUP_BUCKET
+        read -p "  Backup S3 bucket name (BLANK = template creates a fresh one, or provide an existing one to reuse): " CWL_BACKUP_BUCKET
         CWL_STREAM="${CWL_STREAM:-cloudwatch-logs-stream}"
     fi
 
@@ -312,7 +312,7 @@ collect_service_specific_params() {
     if [ "$ENABLE_CW_METRICS" = "true" ]; then
         print_header "CloudWatch All Metrics Parameters"
         print_info "Metrics endpoint is auto-derived from OpenObserveEndpoint (rewrites the /api/ path to /aws/…/cloudwatch_metrics/_kinesis_firehose)."
-        read -p "  Backup S3 bucket name (globally unique): " CW_METRICS_BUCKET
+        read -p "  Backup S3 bucket name (BLANK = template creates a fresh one, or provide an existing one to reuse): " CW_METRICS_BUCKET
     fi
 
     # WAF
