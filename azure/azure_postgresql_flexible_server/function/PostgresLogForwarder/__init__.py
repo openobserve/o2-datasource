@@ -175,11 +175,12 @@ _FLOAT_FIELDS = frozenset(("ae_duration_ms", "stmt_duration_ms", "lw_wait_ms"))
 _UTC_NAMES = frozenset(("UTC", "GMT", "Z", "UCT", "ZULU"))
 _RE_NUMERIC_OFFSET = re.compile(r"^([+-])(\d{2})(?::?(\d{2}))?$")
 
-# The DBM stream is FIXED, not configurable. Every OpenObserve Database
-# Monitoring read is issued against `_o2_dbm_server`; a record delivered
+# Every OpenObserve Database Monitoring read is issued against `_o2_dbm_server`,
+# so that is the prefilled default. It stays overridable (DBM_STREAM_NAME) for
+# sending data to a scratch stream while testing — but a record delivered
 # anywhere else ingests and canonicalizes perfectly and is still invisible to
-# every DBM page. Making this a knob only ever produces that silent failure.
-DBM_STREAM = "_o2_dbm_server"
+# every DBM page, so an override is a deliberate choice, not a preference.
+DEFAULT_DBM_STREAM = "_o2_dbm_server"
 DEFAULT_OTHER_STREAM = "azure_postgresql_logs"
 DEFAULT_POSTGRES_DNS_SUFFIX = "postgres.database.azure.com"
 
@@ -639,6 +640,7 @@ def main(events) -> None:
     base_url = (os.environ.get("OPENOBSERVE_BASE_URL", "") or "").rstrip("/")
     organization = os.environ.get("OPENOBSERVE_ORGANIZATION", "default")
     access_key = os.environ.get("OPENOBSERVE_ACCESS_KEY", "")
+    dbm_stream = os.environ.get("DBM_STREAM_NAME", "") or DEFAULT_DBM_STREAM
     other_stream = os.environ.get("OTHER_STREAM_NAME", "") or DEFAULT_OTHER_STREAM
     forward_other = _env_flag("FORWARD_NON_DBM_LOGS", False)
     instance_override = (os.environ.get("POSTGRES_SERVER_ADDRESS", "") or "").strip()
@@ -652,7 +654,7 @@ def main(events) -> None:
         )
         return
 
-    dbm_url = "{}/api/{}/{}/_json".format(base_url, organization, DBM_STREAM)
+    dbm_url = "{}/api/{}/{}/_json".format(base_url, organization, dbm_stream)
     other_url = "{}/api/{}/{}/_json".format(base_url, organization, other_stream)
 
     dbm_records = []
@@ -757,5 +759,5 @@ def main(events) -> None:
 
     logging.info(
         "Forwarded %d DBM record(s) to %s and %d other record(s)",
-        len(dbm_records), DBM_STREAM, len(other_records),
+        len(dbm_records), dbm_stream, len(other_records),
     )

@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
-
   "parameters": {
     "functionPackageUrl": {
       "type": "string",
@@ -35,11 +34,18 @@
         "description": "OpenObserve password"
       }
     },
+    "dbmStreamName": {
+      "type": "string",
+      "defaultValue": "_o2_dbm_server",
+      "metadata": {
+        "description": "OpenObserve stream that receives the Database Monitoring events. Prefilled with _o2_dbm_server, which is the only stream the OpenObserve Database Monitoring pages read \u2014 change it only to send the data somewhere else on purpose, e.g. a scratch stream while testing."
+      }
+    },
     "forwardNonDbmLogs": {
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Also forward ordinary PostgreSQL log lines (connections, checkpoints, autovacuum). They go to a SEPARATE stream, never to the DBM stream — mixing them there is what makes the Database Monitoring pages slow."
+        "description": "Also forward ordinary PostgreSQL log lines (connections, checkpoints, autovacuum). They go to a SEPARATE stream, never to the DBM stream \u2014 mixing them there is what makes the Database Monitoring pages slow."
       }
     },
     "otherLogsStreamName": {
@@ -58,7 +64,9 @@
     },
     "logCategories": {
       "type": "array",
-      "defaultValue": [ "PostgreSQLLogs" ],
+      "defaultValue": [
+        "PostgreSQLLogs"
+      ],
       "metadata": {
         "description": "Diagnostic log categories to enable on each server. PostgreSQLLogs carries the Postgres server log, which is what Database Monitoring reads."
       }
@@ -80,9 +88,58 @@
     "location": {
       "type": "string",
       "defaultValue": "[resourceGroup().location]",
+      "allowedValues": [
+        "australiacentral",
+        "australiaeast",
+        "australiasoutheast",
+        "austriaeast",
+        "belgiumcentral",
+        "brazilsouth",
+        "canadacentral",
+        "canadaeast",
+        "centralindia",
+        "centralus",
+        "chilecentral",
+        "denmarkeast",
+        "eastasia",
+        "eastus",
+        "eastus2",
+        "francecentral",
+        "germanywestcentral",
+        "indiasouthcentral",
+        "indonesiacentral",
+        "israelcentral",
+        "italynorth",
+        "japaneast",
+        "japanwest",
+        "koreacentral",
+        "koreasouth",
+        "malaysiawest",
+        "mexicocentral",
+        "newzealandnorth",
+        "northcentralus",
+        "northeurope",
+        "norwayeast",
+        "polandcentral",
+        "qatarcentral",
+        "southafricanorth",
+        "southcentralus",
+        "southeastasia",
+        "southindia",
+        "spaincentral",
+        "swedencentral",
+        "switzerlandnorth",
+        "uaenorth",
+        "uksouth",
+        "ukwest",
+        "westcentralus",
+        "westeurope",
+        "westus",
+        "westus2",
+        "westus3"
+      ],
       "metadata": {
-        "description": "Azure region for all resources (defaults to the resource group location)",
-        "strongType": "location"
+        "description": "Azure region for the Event Hub and Function App. Defaults to the resource group's region. The list is the intersection of regions supporting PostgreSQL Flexible Server, Event Hubs and Function Apps \u2014 allowedValues is what makes the portal render this as a dropdown (strongType is not honoured by the custom-template form)."
       }
     },
     "namePrefix": {
@@ -96,7 +153,15 @@
     "functionPlanSku": {
       "type": "string",
       "defaultValue": "Y1",
-      "allowedValues": [ "Y1", "B1", "B2", "B3", "S1", "S2", "S3" ],
+      "allowedValues": [
+        "Y1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3"
+      ],
       "metadata": {
         "description": "App Service Plan SKU for the Function App. Y1 = Consumption (serverless, requires Dynamic VM quota). B1/B2/B3 = Basic, S1/S2/S3 = Standard (always-on, no extra quota needed)."
       }
@@ -104,9 +169,12 @@
     "eventHubSku": {
       "type": "string",
       "defaultValue": "Standard",
-      "allowedValues": [ "Basic", "Standard" ],
+      "allowedValues": [
+        "Basic",
+        "Standard"
+      ],
       "metadata": {
-        "description": "Event Hubs namespace SKU. Standard is strongly recommended — Basic allows only the $Default consumer group, so this pipeline has to share it with anything else reading the hub."
+        "description": "Event Hubs namespace SKU. Standard is strongly recommended \u2014 Basic allows only the $Default consumer group, so this pipeline has to share it with anything else reading the hub."
       }
     },
     "eventHubMessageRetentionDays": {
@@ -124,39 +192,31 @@
       "minValue": 1,
       "maxValue": 32,
       "metadata": {
-        "description": "Number of partitions in the Event Hub. Raise it for busy servers — a Function App scales out at most one instance per partition."
+        "description": "Number of partitions in the Event Hub. Raise it for busy servers \u2014 a Function App scales out at most one instance per partition."
       }
     }
   },
-
   "variables": {
     "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
     "openObserveAccessKey": "[base64(concat(parameters('openObserveUsername'), ':', parameters('openObservePassword')))]",
-
     "storageAccountName": "[take(concat(replace(toLower(parameters('namePrefix')), '-', ''), variables('uniqueSuffix')), 24)]",
     "eventHubNamespaceName": "[concat(parameters('namePrefix'), '-evhns-', variables('uniqueSuffix'))]",
     "eventHubName": "postgresql-logs",
-
     "sendAuthRuleName": "diagnostic-settings-send",
     "listenAuthRuleName": "o2-function-listen",
-
     "isStandardEventHub": "[equals(parameters('eventHubSku'), 'Standard')]",
     "dedicatedConsumerGroupName": "o2-dbm",
     "consumerGroupName": "[if(variables('isStandardEventHub'), variables('dedicatedConsumerGroupName'), '$Default')]",
-
     "appServicePlanName": "[concat(parameters('namePrefix'), '-asp-', variables('uniqueSuffix'))]",
     "functionAppName": "[concat(parameters('namePrefix'), '-func-', variables('uniqueSuffix'))]",
-
     "diagnosticSettingName": "[concat(parameters('namePrefix'), '-pglogs-to-eventhub')]",
     "serverCount": "[length(parameters('postgresServerResourceIds'))]",
-
     "isConsumptionPlan": "[equals(parameters('functionPlanSku'), 'Y1')]",
     "functionPlanTier": "[if(variables('isConsumptionPlan'), 'Dynamic', if(or(equals(parameters('functionPlanSku'), 'B1'), equals(parameters('functionPlanSku'), 'B2'), equals(parameters('functionPlanSku'), 'B3')), 'Basic', 'Standard'))]",
     "appServicePlanKind": "[if(variables('isConsumptionPlan'), 'functionapp,linux', 'linux')]",
     "storageResourceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
     "eventHubAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName'))]",
     "sendAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('sendAuthRuleName'))]",
-
     "copy": [
       {
         "name": "logCategorySettings",
@@ -168,16 +228,16 @@
       }
     ]
   },
-
   "resources": [
-
     {
-      "comments": "Storage Account — required by the Azure Functions runtime for triggers/state",
+      "comments": "Storage Account \u2014 required by the Azure Functions runtime for triggers/state",
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2022-09-01",
       "name": "[variables('storageAccountName')]",
       "location": "[parameters('location')]",
-      "sku": { "name": "Standard_LRS" },
+      "sku": {
+        "name": "Standard_LRS"
+      },
       "kind": "Storage",
       "properties": {
         "supportsHttpsTrafficOnly": true,
@@ -185,9 +245,8 @@
         "allowBlobPublicAccess": false
       }
     },
-
     {
-      "comments": "Event Hubs Namespace — streaming backbone between Diagnostic Settings and the Function App",
+      "comments": "Event Hubs Namespace \u2014 streaming backbone between Diagnostic Settings and the Function App",
       "type": "Microsoft.EventHub/namespaces",
       "apiVersion": "2022-10-01-preview",
       "name": "[variables('eventHubNamespaceName')]",
@@ -203,9 +262,8 @@
         "publicNetworkAccess": "Enabled"
       }
     },
-
     {
-      "comments": "Event Hub — receives PostgreSQLLogs records from each server's Diagnostic Settings",
+      "comments": "Event Hub \u2014 receives PostgreSQLLogs records from each server's Diagnostic Settings",
       "type": "Microsoft.EventHub/namespaces/eventhubs",
       "apiVersion": "2022-10-01-preview",
       "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'))]",
@@ -218,7 +276,6 @@
         "status": "Active"
       }
     },
-
     {
       "comments": "Dedicated consumer group so this forwarder keeps its own offsets even when something else reads the same hub. Basic-tier namespaces allow only $Default, so it is skipped there.",
       "condition": "[variables('isStandardEventHub')]",
@@ -230,9 +287,8 @@
       ],
       "properties": {}
     },
-
     {
-      "comments": "Namespace-level Send rule — used by Azure Monitor Diagnostic Settings",
+      "comments": "Namespace-level Send rule \u2014 used by Azure Monitor Diagnostic Settings",
       "type": "Microsoft.EventHub/namespaces/authorizationRules",
       "apiVersion": "2022-10-01-preview",
       "name": "[concat(variables('eventHubNamespaceName'), '/', variables('sendAuthRuleName'))]",
@@ -240,12 +296,13 @@
         "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
       ],
       "properties": {
-        "rights": [ "Send" ]
+        "rights": [
+          "Send"
+        ]
       }
     },
-
     {
-      "comments": "Event-Hub-level Listen rule — used by the Azure Function consumer",
+      "comments": "Event-Hub-level Listen rule \u2014 used by the Azure Function consumer",
       "type": "Microsoft.EventHub/namespaces/eventhubs/authorizationRules",
       "apiVersion": "2022-10-01-preview",
       "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'), '/', variables('listenAuthRuleName'))]",
@@ -253,12 +310,13 @@
         "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
       ],
       "properties": {
-        "rights": [ "Listen" ]
+        "rights": [
+          "Listen"
+        ]
       }
     },
-
     {
-      "comments": "App Service Plan — Y1/Consumption uses kind=functionapp,linux; B1-S3 dedicated uses kind=linux (avoids Dynamic VM quota routing)",
+      "comments": "App Service Plan \u2014 Y1/Consumption uses kind=functionapp,linux; B1-S3 dedicated uses kind=linux (avoids Dynamic VM quota routing)",
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2022-03-01",
       "name": "[variables('appServicePlanName')]",
@@ -272,9 +330,8 @@
         "reserved": true
       }
     },
-
     {
-      "comments": "Function App — Linux Python 3.11. Reproduces the DBM collector's filelog/pg operator chain over the Event Hub records and posts the result to the _o2_dbm_server stream. That stream name is fixed in the function, not a parameter: it is the only stream OpenObserve's Database Monitoring reads, so a configurable destination could only ever point somewhere invisible.",
+      "comments": "Function App \u2014 Linux Python 3.11. Reproduces the DBM collector's filelog/pg operator chain over the Event Hub records and posts the result to the _o2_dbm_server stream. That stream name is fixed in the function, not a parameter: it is the only stream OpenObserve's Database Monitoring reads, so a configurable destination could only ever point somewhere invisible.",
       "type": "Microsoft.Web/sites",
       "apiVersion": "2022-03-01",
       "name": "[variables('functionAppName')]",
@@ -322,6 +379,10 @@
               "value": "[variables('openObserveAccessKey')]"
             },
             {
+              "name": "DBM_STREAM_NAME",
+              "value": "[parameters('dbmStreamName')]"
+            },
+            {
               "name": "FORWARD_NON_DBM_LOGS",
               "value": "[if(parameters('forwardNonDbmLogs'), 'true', 'false')]"
             },
@@ -356,9 +417,8 @@
         "httpsOnly": true
       }
     },
-
     {
-      "comments": "Diagnostic Settings on each PostgreSQL Flexible Server. Extension resources scoped this way reach any resource group in THIS subscription; servers in another subscription need configure-diagnostic-settings.sh run against that subscription instead. The scope array is padded with one throwaway ID so copyIndex() stays in range when no servers were supplied — `condition` keeps the padded iteration from creating anything.",
+      "comments": "Diagnostic Settings on each PostgreSQL Flexible Server. Extension resources scoped this way reach any resource group in THIS subscription; servers in another subscription need configure-diagnostic-settings.sh run against that subscription instead. The scope array is padded with one throwaway ID so copyIndex() stays in range when no servers were supplied \u2014 `condition` keeps the padded iteration from creating anything.",
       "condition": "[greater(variables('serverCount'), 0)]",
       "copy": {
         "name": "diagnosticSettingsLoop",
@@ -378,9 +438,7 @@
         "logs": "[variables('logCategorySettings')]"
       }
     }
-
   ],
-
   "outputs": {
     "eventHubNamespaceName": {
       "type": "string",
@@ -412,7 +470,7 @@
     },
     "dbmIngestUrl": {
       "type": "string",
-      "value": "[concat(parameters('openObserveBaseUrl'), '/api/', parameters('openObserveOrganization'), '/_o2_dbm_server/_json')]"
+      "value": "[concat(parameters('openObserveBaseUrl'), '/api/', parameters('openObserveOrganization'), '/', parameters('dbmStreamName'), '/_json')]"
     },
     "nextStep": {
       "type": "string",
