@@ -63,10 +63,10 @@ az deployment group create \
   --name o2-pgflex-deploy \
   --template-file postgres-logs-to-openobserve.json \
   --parameters \
-    openObserveBaseUrl="https://api.openobserve.ai" \
-    openObserveOrganization="default" \
-    openObserveUsername="you@example.com" \
-    openObservePassword="<password>" \
+    o2Endpoint="https://api.openobserve.ai" \
+    o2Organization="default" \
+    o2Username="you@example.com" \
+    o2Password="<password>" \
     postgresServerResourceIds='["/subscriptions/.../flexibleServers/mypgsrv"]'
 ```
 
