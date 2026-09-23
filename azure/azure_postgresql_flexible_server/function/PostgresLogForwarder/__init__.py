@@ -591,8 +591,56 @@ def _chunks(records):
         yield batch
 
 
-def _post(url, access_key, records):
-    payload = json.dumps(records).encode("utf-8")
+def _otlp_value(value):
+    """Wrap a Python scalar in an OTLP AnyValue.
+
+    int64 travels as a STRING in OTLP/JSON -- that is the protobuf JSON
+    mapping, not a quirk, and sending a bare number is rejected.
+    """
+    if isinstance(value, bool):
+        return {"boolValue": value}
+    if isinstance(value, int):
+        return {"intValue": str(value)}
+    if isinstance(value, float):
+        return {"doubleValue": value}
+    return {"stringValue": str(value)}
+
+
+def _to_otlp(records):
+    """Render flat records as an OTLP/HTTP JSON logs payload.
+
+    OpenObserve's OTLP path assigns each attribute onto the record under its
+    own key, with its type retained, and takes `body` and the timestamp from
+    the log record itself. So the flat shape built above survives the trip
+    unchanged and the DBM canonicalizer still sees `o2_pg_event`,
+    `ae_plan_json` and the rest under exactly those names.
+    """
+    log_records = []
+    for record in records:
+        attributes = [
+            {"key": k, "value": _otlp_value(v)}
+            for k, v in record.items()
+            if k not in ("_timestamp", "body") and v is not None
+        ]
+        entry = {
+            "timeUnixNano": str(int(record.get("_timestamp", 0)) * 1000),
+            "body": {"stringValue": record.get("body", "")},
+            "attributes": attributes,
+        }
+        log_records.append(entry)
+    return {"resourceLogs": [{"scopeLogs": [{"logRecords": log_records}]}]}
+
+
+def _post(url, access_key, records, stream_name):
+    """POST one batch to OpenObserve's OTLP logs endpoint.
+
+    OTLP rather than `/_json` because `_o2_dbm_server` is an internal rollup
+    stream: OpenObserve rejects a `/_json` write into it outright with
+    "is an internal rollup stream and cannot be ingested into". The OTLP
+    endpoint with a `stream-name` header is the supported door, and it is the
+    one the shipped reference collector uses for this stream.
+    """
+    payload = json.dumps(_to_otlp(records)).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=payload,
@@ -600,6 +648,7 @@ def _post(url, access_key, records):
         headers={
             "Content-Type": "application/json",
             "Authorization": "Basic " + access_key,
+            "stream-name": stream_name,
         },
     )
     last_error = None
@@ -654,8 +703,9 @@ def main(events) -> None:
         )
         return
 
-    dbm_url = "{}/api/{}/{}/_json".format(base_url, organization, dbm_stream)
-    other_url = "{}/api/{}/{}/_json".format(base_url, organization, other_stream)
+    # One OTLP endpoint for both streams; the destination is chosen by the
+    # per-request `stream-name` header, not by the path.
+    otlp_url = "{}/api/{}/v1/logs".format(base_url, organization)
 
     dbm_records = []
     other_records = []
@@ -753,9 +803,9 @@ def main(events) -> None:
         )
 
     for batch in _chunks(dbm_records):
-        _post(dbm_url, access_key, batch)
+        _post(otlp_url, access_key, batch, dbm_stream)
     for batch in _chunks(other_records):
-        _post(other_url, access_key, batch)
+        _post(otlp_url, access_key, batch, other_stream)
 
     logging.info(
         "Forwarded %d DBM record(s) to %s and %d other record(s)",
