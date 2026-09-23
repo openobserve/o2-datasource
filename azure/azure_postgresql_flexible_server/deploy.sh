@@ -232,10 +232,10 @@ deploy_arm_template() {
         --name "$DEPLOYMENT_NAME" \
         --template-file "$TEMPLATE_FILE" \
         --parameters \
-            openObserveBaseUrl="$OO_BASE_URL" \
-            openObserveOrganization="$OO_ORG" \
-            openObserveUsername="$OO_USER" \
-            openObservePassword="$OO_PASS" \
+            o2Endpoint="$OO_BASE_URL" \
+            o2Organization="$OO_ORG" \
+            o2Username="$OO_USER" \
+            o2Password="$OO_PASS" \
             forwardNonDbmLogs="$FORWARD_OTHER" \
             otherLogsStreamName="$OTHER_STREAM" \
             postgresServerResourceIds="$servers_json" \
