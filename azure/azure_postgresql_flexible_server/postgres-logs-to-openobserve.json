@@ -9,26 +9,26 @@
         "description": "URL of the Function App zip package in S3. Leave as default unless you are hosting templates in a custom bucket."
       }
     },
-    "openObserveBaseUrl": {
+    "o2Endpoint": {
       "type": "string",
       "metadata": {
         "description": "OpenObserve base URL, with no trailing path (e.g. https://api.openobserve.ai). The stream path is appended by the function."
       }
     },
-    "openObserveOrganization": {
+    "o2Organization": {
       "type": "string",
       "defaultValue": "default",
       "metadata": {
         "description": "OpenObserve organization identifier"
       }
     },
-    "openObserveUsername": {
+    "o2Username": {
       "type": "string",
       "metadata": {
         "description": "OpenObserve username (email address used to log in)"
       }
     },
-    "openObservePassword": {
+    "o2Password": {
       "type": "securestring",
       "metadata": {
         "description": "OpenObserve password"
@@ -198,7 +198,7 @@
   },
   "variables": {
     "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
-    "openObserveAccessKey": "[base64(concat(parameters('openObserveUsername'), ':', parameters('openObservePassword')))]",
+    "openObserveAccessKey": "[base64(concat(parameters('o2Username'), ':', parameters('o2Password')))]",
     "storageAccountName": "[take(concat(replace(toLower(parameters('namePrefix')), '-', ''), variables('uniqueSuffix')), 24)]",
     "eventHubNamespaceName": "[concat(parameters('namePrefix'), '-evhns-', variables('uniqueSuffix'))]",
     "eventHubName": "postgresql-logs",
@@ -238,7 +238,7 @@
       "sku": {
         "name": "Standard_LRS"
       },
-      "kind": "Storage",
+      "kind": "StorageV2",
       "properties": {
         "supportsHttpsTrafficOnly": true,
         "minimumTlsVersion": "TLS1_2",
@@ -368,11 +368,11 @@
             },
             {
               "name": "OPENOBSERVE_BASE_URL",
-              "value": "[parameters('openObserveBaseUrl')]"
+              "value": "[parameters('o2Endpoint')]"
             },
             {
               "name": "OPENOBSERVE_ORGANIZATION",
-              "value": "[parameters('openObserveOrganization')]"
+              "value": "[parameters('o2Organization')]"
             },
             {
               "name": "OPENOBSERVE_ACCESS_KEY",
@@ -470,7 +470,7 @@
     },
     "dbmIngestUrl": {
       "type": "string",
-      "value": "[concat(parameters('openObserveBaseUrl'), '/api/', parameters('openObserveOrganization'), '/', parameters('dbmStreamName'), '/_json')]"
+      "value": "[concat(parameters('o2Endpoint'), '/api/', parameters('o2Organization'), '/', parameters('dbmStreamName'), '/_json')]"
     },
     "nextStep": {
       "type": "string",
