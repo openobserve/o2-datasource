@@ -1,0 +1,15 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Placeholder CloudFormation template. Real parameters live co-located with each template (e.g. CloudWatch_All_Metrics/parameters.json). This file exists only so nothing at cf_parameters/ breaks template discovery. It creates no billable AWS resources.",
+  "Resources": {
+    "PlaceholderHandle": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle"
+    }
+  },
+  "Outputs": {
+    "Notice": {
+      "Description": "Placeholder stack. Deploy the real templates under CloudWatch_All_Metrics/, aws_complete/, aws_cloudfront/, etc. Their parameters must live next to each template as parameters.json (per ops0 conventions).",
+      "Value": "placeholder"
+    }
+  }
+}

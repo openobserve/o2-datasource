@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "HttpEndpointName",
+    "ParameterValue": "OpenObserve-Metrics"
+  },
+  {
+    "ParameterKey": "HttpEndpointUrl",
+    "ParameterValue": "https://api.openobserve.ai/aws/REPLACE_ORG_ID/default/_kinesis_firehose"
+  },
+  {
+    "ParameterKey": "AccessKey",
+    "ParameterValue": "REPLACE_WITH_BASE64_ENCODED_USER_PASSWORD"
+  },
+  {
+    "ParameterKey": "S3BackupBucket",
+    "ParameterValue": "REPLACE_WITH_EXISTING_S3_BUCKET_NAME"
+  }
+]

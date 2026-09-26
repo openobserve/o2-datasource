@@ -1,0 +1,34 @@
+[
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "REPLACE_WITH_ALB_LOGS_BUCKET_NAME"
+  },
+  {
+    "ParameterKey": "AWSAccountId",
+    "ParameterValue": "REPLACE_WITH_AWS_ACCOUNT_ID"
+  },
+  {
+    "ParameterKey": "ELBAccountId",
+    "ParameterValue": "033677994240"
+  },
+  {
+    "ParameterKey": "AccessLogsPrefix",
+    "ParameterValue": "access-logs"
+  },
+  {
+    "ParameterKey": "ConnectionLogsPrefix",
+    "ParameterValue": "connection-logs"
+  },
+  {
+    "ParameterKey": "OpenObserveEndpoint",
+    "ParameterValue": "https://api.openobserve.ai/api/REPLACE_ORG/default/_json"
+  },
+  {
+    "ParameterKey": "BasicAuthUsername",
+    "ParameterValue": "REPLACE_WITH_OPENOBSERVE_USERNAME"
+  },
+  {
+    "ParameterKey": "BasicAuthPassword",
+    "ParameterValue": "REPLACE_WITH_OPENOBSERVE_PASSWORD"
+  }
+]
