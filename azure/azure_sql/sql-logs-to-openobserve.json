@@ -1,0 +1,461 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "functionPackageUrl": {
+      "type": "string",
+      "defaultValue": "https://openobserve-datasources-bucket.s3.amazonaws.com/datasource/cloud/azure/azure_sql-function.zip",
+      "metadata": {
+        "description": "URL of the Function App zip package in S3. Leave as default unless you are hosting templates in a custom bucket."
+      }
+    },
+    "o2Endpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "OpenObserve base URL, with no trailing path (e.g. https://api.openobserve.ai). The stream path is appended by the function."
+      }
+    },
+    "o2Organization": {
+      "type": "string",
+      "defaultValue": "default",
+      "metadata": {
+        "description": "OpenObserve organization identifier"
+      }
+    },
+    "o2Username": {
+      "type": "string",
+      "metadata": {
+        "description": "OpenObserve username (email address used to log in)"
+      }
+    },
+    "o2Password": {
+      "type": "securestring",
+      "metadata": {
+        "description": "OpenObserve password"
+      }
+    },
+    "streamName": {
+      "type": "string",
+      "defaultValue": "azure_sql_logs",
+      "metadata": {
+        "description": "OpenObserve stream that receives the Azure SQL diagnostic records. An ordinary stream \u2014 not _o2_dbm_server, which is an internal rollup stream that rejects direct _json writes."
+      }
+    },
+    "instanceResourceIds": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Resource IDs of SQL Managed Instances (.../Microsoft.Sql/managedInstances/<name>) to attach instance-level categories to. Azure SQL Database servers (Microsoft.Sql/servers) have no instance-level diagnostics \u2014 list their databases below instead."
+      }
+    },
+    "instanceLogCategories": {
+      "type": "array",
+      "defaultValue": [
+        "ResourceUsageStats"
+      ],
+      "metadata": {
+        "description": "Diagnostic categories enabled on each Managed Instance. Valid: ResourceUsageStats, SQLSecurityAuditEvents (needs auditing configured), DevOpsOperationsAudit."
+      },
+      "minLength": 1
+    },
+    "databaseResourceIds": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Resource IDs of databases to stream: .../managedInstances/<mi>/databases/<db> or .../servers/<server>/databases/<db>. Diagnostic settings for query and error data live on each database, not on the server."
+      }
+    },
+    "databaseLogCategories": {
+      "type": "array",
+      "defaultValue": [
+        "SQLInsights",
+        "QueryStoreRuntimeStatistics",
+        "QueryStoreWaitStatistics",
+        "Errors"
+      ],
+      "metadata": {
+        "description": "Diagnostic categories enabled on each database. The default works on both Managed Instance and Azure SQL Database. Azure SQL Database (not Managed Instance) also offers DatabaseWaitStatistics, Timeouts, Blocks, Deadlocks and AutomaticTuning."
+      },
+      "minLength": 1
+    },
+    "sqlServerAddressOverride": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Pins server_address on every record. Leave empty to derive <server>.database.windows.net for Azure SQL Database, or the instance name for Managed Instance (its DNS zone is not in the diagnostic record)."
+      }
+    },
+    "sqlDnsSuffix": {
+      "type": "string",
+      "defaultValue": "database.windows.net",
+      "metadata": {
+        "description": "DNS suffix used to derive server_address for Azure SQL Database. Change it for sovereign clouds (e.g. database.chinacloudapi.cn)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for the Event Hub and Function App. Defaults to the resource group's region. Use the region your SQL instances and databases are in: Azure Monitor only streams diagnostics to an Event Hub in the same region as the monitored resource."
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "o2-azsql",
+      "maxLength": 14,
+      "metadata": {
+        "description": "Short prefix used to name all resources (max 14 chars, lowercase letters and hyphens)"
+      },
+      "minLength": 2
+    },
+    "functionPlanSku": {
+      "type": "string",
+      "defaultValue": "Y1",
+      "allowedValues": [
+        "Y1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "metadata": {
+        "description": "App Service Plan SKU for the Function App. Y1 = Consumption (serverless, requires Dynamic VM quota). B1/B2/B3 = Basic, S1/S2/S3 = Standard (always-on, no extra quota needed)."
+      }
+    },
+    "eventHubSku": {
+      "type": "string",
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Basic",
+        "Standard"
+      ],
+      "metadata": {
+        "description": "Event Hubs namespace SKU. Standard is strongly recommended \u2014 Basic allows only the $Default consumer group, so this pipeline has to share it with anything else reading the hub."
+      }
+    },
+    "eventHubMessageRetentionDays": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1,
+      "maxValue": 7,
+      "metadata": {
+        "description": "Number of days to retain messages in the Event Hub. Basic tier is capped at 1 day; larger values apply only on Standard."
+      }
+    },
+    "eventHubPartitionCount": {
+      "type": "int",
+      "defaultValue": 4,
+      "minValue": 1,
+      "maxValue": 32,
+      "metadata": {
+        "description": "Number of partitions in the Event Hub. Raise it for many busy databases \u2014 a Function App scales out at most one instance per partition."
+      }
+    }
+  },
+  "variables": {
+    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
+    "openObserveAccessKey": "[base64(concat(parameters('o2Username'), ':', parameters('o2Password')))]",
+    "storageAccountName": "[take(concat(replace(toLower(parameters('namePrefix')), '-', ''), variables('uniqueSuffix')), 24)]",
+    "eventHubNamespaceName": "[concat(parameters('namePrefix'), '-evhns-', variables('uniqueSuffix'))]",
+    "eventHubName": "sql-logs",
+    "sendAuthRuleName": "diagnostic-settings-send",
+    "listenAuthRuleName": "o2-function-listen",
+    "isStandardEventHub": "[equals(parameters('eventHubSku'), 'Standard')]",
+    "dedicatedConsumerGroupName": "o2-sql",
+    "consumerGroupName": "[if(variables('isStandardEventHub'), variables('dedicatedConsumerGroupName'), '$Default')]",
+    "appServicePlanName": "[concat(parameters('namePrefix'), '-asp-', variables('uniqueSuffix'))]",
+    "functionAppName": "[concat(parameters('namePrefix'), '-func-', variables('uniqueSuffix'))]",
+    "diagnosticSettingName": "[concat(parameters('namePrefix'), '-sql-to-eventhub')]",
+    "isConsumptionPlan": "[equals(parameters('functionPlanSku'), 'Y1')]",
+    "functionPlanTier": "[if(variables('isConsumptionPlan'), 'Dynamic', if(or(equals(parameters('functionPlanSku'), 'B1'), equals(parameters('functionPlanSku'), 'B2'), equals(parameters('functionPlanSku'), 'B3')), 'Basic', 'Standard'))]",
+    "appServicePlanKind": "[if(variables('isConsumptionPlan'), 'functionapp,linux', 'linux')]",
+    "storageResourceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+    "eventHubAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName'))]",
+    "sendAuthRuleId": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('sendAuthRuleName'))]",
+    "instanceCount": "[length(parameters('instanceResourceIds'))]",
+    "databaseCount": "[length(parameters('databaseResourceIds'))]",
+    "copy": [
+      {
+        "name": "instanceLogSettings",
+        "count": "[length(parameters('instanceLogCategories'))]",
+        "input": {
+          "category": "[parameters('instanceLogCategories')[copyIndex('instanceLogSettings')]]",
+          "enabled": true
+        }
+      },
+      {
+        "name": "databaseLogSettings",
+        "count": "[length(parameters('databaseLogCategories'))]",
+        "input": {
+          "category": "[parameters('databaseLogCategories')[copyIndex('databaseLogSettings')]]",
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "resources": [
+    {
+      "comments": "Storage Account \u2014 required by the Azure Functions runtime for triggers/state",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "comments": "Event Hubs Namespace \u2014 streaming backbone between Diagnostic Settings and the Function App",
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[variables('eventHubNamespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('eventHubSku')]",
+        "tier": "[parameters('eventHubSku')]",
+        "capacity": 1
+      },
+      "properties": {
+        "isAutoInflateEnabled": false,
+        "minimumTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "comments": "Event Hub \u2014 receives Azure SQL diagnostic records from each instance's and database's Diagnostic Settings",
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
+      ],
+      "properties": {
+        "messageRetentionInDays": "[if(variables('isStandardEventHub'), parameters('eventHubMessageRetentionDays'), 1)]",
+        "partitionCount": "[parameters('eventHubPartitionCount')]",
+        "status": "Active"
+      }
+    },
+    {
+      "comments": "Dedicated consumer group so this forwarder keeps its own offsets even when something else reads the same hub. Basic-tier namespaces allow only $Default, so it is skipped there.",
+      "condition": "[variables('isStandardEventHub')]",
+      "type": "Microsoft.EventHub/namespaces/eventhubs/consumergroups",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'), '/', variables('dedicatedConsumerGroupName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+      ],
+      "properties": {}
+    },
+    {
+      "comments": "Namespace-level Send rule \u2014 used by Azure Monitor Diagnostic Settings",
+      "type": "Microsoft.EventHub/namespaces/authorizationRules",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[concat(variables('eventHubNamespaceName'), '/', variables('sendAuthRuleName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
+      ],
+      "properties": {
+        "rights": [
+          "Send"
+        ]
+      }
+    },
+    {
+      "comments": "Event-Hub-level Listen rule \u2014 used by the Azure Function consumer",
+      "type": "Microsoft.EventHub/namespaces/eventhubs/authorizationRules",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'), '/', variables('listenAuthRuleName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+      ],
+      "properties": {
+        "rights": [
+          "Listen"
+        ]
+      }
+    },
+    {
+      "comments": "App Service Plan \u2014 Y1/Consumption uses kind=functionapp,linux; B1-S3 dedicated uses kind=linux (avoids Dynamic VM quota routing)",
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-03-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('functionPlanSku')]",
+        "tier": "[variables('functionPlanTier')]"
+      },
+      "kind": "[variables('appServicePlanKind')]",
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "comments": "Function App \u2014 Linux Python 3.11. Flattens Azure SQL diagnostic records and posts them to an ordinary OpenObserve stream via the _json endpoint.",
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-03-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp,linux",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubName'), variables('listenAuthRuleName'))]",
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs/consumergroups', variables('eventHubNamespaceName'), variables('eventHubName'), variables('dedicatedConsumerGroupName'))]"
+      ],
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "reserved": true,
+        "siteConfig": {
+          "linuxFxVersion": "Python|3.11",
+          "pythonVersion": "3.11",
+          "alwaysOn": "[not(variables('isConsumptionPlan'))]",
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageResourceId'), '2022-09-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "[parameters('functionPackageUrl')]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "python"
+            },
+            {
+              "name": "OPENOBSERVE_BASE_URL",
+              "value": "[parameters('o2Endpoint')]"
+            },
+            {
+              "name": "OPENOBSERVE_ORGANIZATION",
+              "value": "[parameters('o2Organization')]"
+            },
+            {
+              "name": "OPENOBSERVE_ACCESS_KEY",
+              "value": "[variables('openObserveAccessKey')]"
+            },
+            {
+              "name": "STREAM_NAME",
+              "value": "[parameters('streamName')]"
+            },
+            {
+              "name": "SQL_SERVER_ADDRESS",
+              "value": "[parameters('sqlServerAddressOverride')]"
+            },
+            {
+              "name": "SQL_DNS_SUFFIX",
+              "value": "[parameters('sqlDnsSuffix')]"
+            },
+            {
+              "name": "EventHubConnection",
+              "value": "[listKeys(variables('eventHubAuthRuleId'), '2022-10-01-preview').primaryConnectionString]"
+            },
+            {
+              "name": "EVENT_HUB_NAME",
+              "value": "[variables('eventHubName')]"
+            },
+            {
+              "name": "EVENT_HUB_CONSUMER_GROUP",
+              "value": "[variables('consumerGroupName')]"
+            }
+          ],
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2"
+        },
+        "httpsOnly": true
+      }
+    },
+    {
+      "comments": "Diagnostic Settings on each SQL Managed Instance (instance-level categories). Extension resources scoped this way reach any resource group in THIS subscription; resources in another subscription are attached with configure-diagnostic-settings.sh (run while logged in to the pipeline's subscription, passing the full resource ID). The scope array is padded with one throwaway ID so copyIndex() stays in range when none were supplied \u2014 `condition` keeps the padded iteration from creating anything.",
+      "condition": "[greater(variables('instanceCount'), 0)]",
+      "copy": {
+        "name": "instanceDiagnosticSettingsLoop",
+        "count": "[if(greater(variables('instanceCount'), 0), variables('instanceCount'), 1)]"
+      },
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[concat(parameters('instanceResourceIds'), array(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))))[copyIndex()]]",
+      "name": "[variables('diagnosticSettingName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('sendAuthRuleName'))]",
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+      ],
+      "properties": {
+        "eventHubAuthorizationRuleId": "[variables('sendAuthRuleId')]",
+        "eventHubName": "[variables('eventHubName')]",
+        "logs": "[variables('instanceLogSettings')]"
+      }
+    },
+    {
+      "comments": "Diagnostic Settings on each database (Managed Instance or Azure SQL Database). Extension resources scoped this way reach any resource group in THIS subscription; resources in another subscription are attached with configure-diagnostic-settings.sh (run while logged in to the pipeline's subscription, passing the full resource ID). The scope array is padded with one throwaway ID (the event hub's, distinct from the instance loop's namespace ID so the two unused placeholders never collide) so copyIndex() stays in range when none were supplied \u2014 `condition` keeps the padded iteration from creating anything.",
+      "condition": "[greater(variables('databaseCount'), 0)]",
+      "copy": {
+        "name": "databaseDiagnosticSettingsLoop",
+        "count": "[if(greater(variables('databaseCount'), 0), variables('databaseCount'), 1)]"
+      },
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[concat(parameters('databaseResourceIds'), array(resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))))[copyIndex()]]",
+      "name": "[variables('diagnosticSettingName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('sendAuthRuleName'))]",
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+      ],
+      "properties": {
+        "eventHubAuthorizationRuleId": "[variables('sendAuthRuleId')]",
+        "eventHubName": "[variables('eventHubName')]",
+        "logs": "[variables('databaseLogSettings')]"
+      }
+    }
+  ],
+  "outputs": {
+    "eventHubNamespaceName": {
+      "type": "string",
+      "value": "[variables('eventHubNamespaceName')]"
+    },
+    "eventHubName": {
+      "type": "string",
+      "value": "[variables('eventHubName')]"
+    },
+    "eventHubConsumerGroup": {
+      "type": "string",
+      "value": "[variables('consumerGroupName')]"
+    },
+    "sendAuthRuleId": {
+      "type": "string",
+      "value": "[variables('sendAuthRuleId')]"
+    },
+    "diagnosticSettingName": {
+      "type": "string",
+      "value": "[variables('diagnosticSettingName')]"
+    },
+    "functionAppName": {
+      "type": "string",
+      "value": "[variables('functionAppName')]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "value": "[concat('https://', reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName)]"
+    },
+    "nextStep": {
+      "type": "string",
+      "value": "[if(greater(add(variables('instanceCount'), variables('databaseCount')), 0), 'Diagnostic Settings were created by this deployment. Records appear in OpenObserve within 5-15 minutes. Query and error data come only from database-level settings; attach databases with configure-diagnostic-settings.sh if none were listed.', concat('No resource IDs were supplied. Connect each database with:\naz monitor diagnostic-settings create \\\n  --name ', variables('diagnosticSettingName'), ' \\\n  --resource <database-resource-id> \\\n  --event-hub ', variables('eventHubName'), ' \\\n  --event-hub-rule ', variables('sendAuthRuleId'), ' \\\n  --logs \"[{\\\"category\\\":\\\"SQLInsights\\\",\\\"enabled\\\":true},{\\\"category\\\":\\\"QueryStoreRuntimeStatistics\\\",\\\"enabled\\\":true},{\\\"category\\\":\\\"QueryStoreWaitStatistics\\\",\\\"enabled\\\":true},{\\\"category\\\":\\\"Errors\\\",\\\"enabled\\\":true}]\"'))]"
+    },
+    "ingestUrl": {
+      "type": "string",
+      "value": "[concat(parameters('o2Endpoint'), '/api/', parameters('o2Organization'), '/', parameters('streamName'), '/_json')]"
+    }
+  }
+}
