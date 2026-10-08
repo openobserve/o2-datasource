@@ -108,6 +108,8 @@ troubleshooting:
     a: "The CLI defaults to a local file exporter. Set COPILOT_OTEL_EXPORTER_TYPE=otlp-http and start a fresh session."
   - q: "The CLI log says `HTTP export failed: network error`"
     a: "That's OpenObserve rejecting OTLP JSON with a 400. Set OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf — the payload then ingests cleanly."
+  - q: "invoke_agent Input (user prompt) and Output (model reply) show No data available"
+    a: "The prompt and the reply are not recorded by default. Set OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true and start a fresh session."
 
 ---
 
