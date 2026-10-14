@@ -311,7 +311,7 @@ collect_service_specific_params() {
     # CloudWatch Metrics
     if [ "$ENABLE_CW_METRICS" = "true" ]; then
         print_header "CloudWatch All Metrics Parameters"
-        print_info "Metrics endpoint is auto-derived from OpenObserveEndpoint (rewrites the /api/ path to /aws/…/cloudwatch_metrics/_kinesis_firehose)."
+        print_info "Metrics endpoint is auto-derived from OpenObserveEndpoint (sent to the OTLP metrics URL /api/<org>/v1/metrics on the same host and org)."
         read -p "  Backup S3 bucket name (BLANK = template creates a fresh one, or provide an existing one to reuse): " CW_METRICS_BUCKET
     fi
 

@@ -197,7 +197,7 @@ Parameters:
   # ============================================================
   OpenObserveEndpoint:
     Type: String
-    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis_firehose). Used by all logs services as-is. CloudWatch Metrics reuses this — the template rewrites /api/<org>/<stream>/… to /aws/<org>/cloudwatch_metrics/_kinesis_firehose automatically.'
+    Description: 'OpenObserve HTTP endpoint URL (e.g., https://api.openobserve.ai/api/your-org/default/_kinesis_firehose). Used by all logs services as-is. CloudWatch Metrics reuses this — its relay sends to the OTLP metrics URL /api/<org>/v1/metrics on the same host and org.'
 
   OpenObserveAccessKey:
     Type: String
@@ -304,7 +304,7 @@ Parameters:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: 'Stream all CloudWatch Metrics to OpenObserve via Metrics Stream + Firehose'
+    Description: 'Stream all CloudWatch Metrics to OpenObserve as metrics (OTLP) via Metrics Stream + Firehose + relay Lambda'
 
   EnableWAF:
     Type: String
@@ -1389,18 +1389,10 @@ Resources:
         - TemplateRegion: !If [TemplateS3RegionProvided, !Ref TemplateS3Region, !Ref 'AWS::Region']
       Parameters:
         HttpEndpointName: 'OpenObserve-Metrics'
-        # Derive the CloudWatch Metrics URL from the logs OpenObserveEndpoint.
-        # Split on "/" of e.g. "https://api.host.com/api/<org>/<stream>/_kinesis_firehose":
-        #   [0]="https:", [1]="", [2]="api.host.com", [3]="api", [4]=<org>, ...
-        # Rebuild as "${scheme}//${host}/aws/${org}/cloudwatch_metrics/_kinesis_firehose"
-        # — OpenObserve's dedicated CloudWatch Metric Streams ingester lives at
-        # /aws/<org>/cloudwatch_metrics/_kinesis_firehose and data lands in a
-        # Logs-type stream named "cloudwatch_metrics".
-        HttpEndpointUrl: !Sub
-          - "${Scheme}//${Host}/aws/${Org}/cloudwatch_metrics/_kinesis_firehose"
-          - Scheme: !Select [0, !Split ["/", !Ref OpenObserveEndpoint]]
-            Host:   !Select [2, !Split ["/", !Ref OpenObserveEndpoint]]
-            Org:    !Select [4, !Split ["/", !Ref OpenObserveEndpoint]]
+        # The logs OpenObserveEndpoint as-is: the nested stack's relay keeps
+        # its scheme, host, base path and org and posts to the OTLP metrics
+        # route /api/<org>/v1/metrics, so the data lands as metrics.
+        HttpEndpointUrl: !Ref OpenObserveEndpoint
         AccessKey: !Ref OpenObserveAccessKey
         S3BackupBucket: !Ref CloudWatchMetricsS3BackupBucket
       TimeoutInMinutes: 30

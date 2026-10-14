@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation stack for streaming CloudWatch Metrics to OpenObserve via Kinesis Firehose.
+Description: CloudFormation stack for streaming CloudWatch Metrics to OpenObserve as metrics (OTLP) via Kinesis Firehose and a relay Lambda.
 
 Parameters:
   HttpEndpointName:
@@ -7,10 +7,11 @@ Parameters:
     Description: Name of the HTTP endpoint for Kinesis Firehose.
   AccessKey:
     Type: String
-    Description: Access key for authentication with the HTTP endpoint.
+    NoEcho: true
+    Description: 'OpenObserve access key (base64 encoded user:password). Firehose hands it to the relay, which sends it to OpenObserve as HTTP Basic auth.'
   HttpEndpointUrl:
     Type: String
-    Description: 'OpenObserve HTTP endpoint URL for CloudWatch Metrics — must use the /aws/ path prefix and the fixed stream name cloudwatch_metrics (e.g., https://<host>/aws/<org>/cloudwatch_metrics/_kinesis_firehose). Different from the generic /api/ path used for logs services.'
+    Description: 'OpenObserve OTLP metrics URL (e.g., https://<host>/api/<org>/v1/metrics). Any OpenObserve URL for the org also works, such as https://<host>/api/<org>/default/_kinesis_firehose or the older /aws/<org>/cloudwatch_metrics/_kinesis_firehose: the relay keeps the scheme, host and org and sends to /api/<org>/v1/metrics.'
   S3BackupBucket:
     Type: String
     Default: ''
@@ -57,6 +58,253 @@ Resources:
     Properties:
       LogGroupName: !Ref FirehoseLogGroup
       LogStreamName: DeliveryStreamLogs
+
+  # OpenObserve's /_kinesis_firehose ingester always writes to a Logs-type
+  # stream, so Firehose cannot post to OpenObserve directly if the data is to
+  # land as metrics. Firehose posts to this relay instead, which converts the
+  # records to OTLP and sends them to OpenObserve's OTLP metrics endpoint.
+  RelayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-metrics-relay"
+      RetentionInDays: 14
+
+  RelayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RelayLogsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt RelayLogGroup.Arn
+
+  RelayFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Converts CloudWatch Metric Stream records from Firehose to OTLP and sends them to OpenObserve.
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt RelayRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      LoggingConfig:
+        LogGroup: !Ref RelayLogGroup
+      Environment:
+        Variables:
+          O2_ENDPOINT: !Ref HttpEndpointUrl
+          # Built from the name rather than !GetAtt KinesisFirehose.Arn, which
+          # would be circular: the delivery stream needs this function's URL.
+          SOURCE_ARN: !Sub
+            - "arn:${AWS::Partition}:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${Name}"
+            - Name: !Sub
+                - "o2-cw-metrics-${StackUuid}"
+                - StackUuid: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      Code:
+        ZipFile: |
+          import base64
+          from decimal import Decimal
+          import gzip
+          import json
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+
+          def _otlp_metrics_url(url):
+              # Keep scheme, host, any base path and the org; replace the rest
+              # with the OTLP metrics route.
+              u = urllib.parse.urlsplit(url.strip())
+              parts = [p for p in u.path.split("/") if p]
+              for i, p in enumerate(parts[:-1]):
+                  if p in ("api", "aws"):
+                      path = "/".join(parts[:i] + ["api", parts[i + 1], "v1", "metrics"])
+                      return urllib.parse.urlunsplit((u.scheme, u.netloc, "/" + path, "", ""))
+              raise ValueError("O2_ENDPOINT must contain /api/<org>/ or /aws/<org>/: " + url)
+
+
+          TARGET = _otlp_metrics_url(os.environ["O2_ENDPOINT"])
+          SOURCE_ARN = os.environ["SOURCE_ARN"]
+          PERCENTILE = re.compile(r"^p(\d+(?:\.\d+)?)$")
+          # Labels the relay or OpenObserve sets on every point, as OpenObserve
+          # spells them; a dimension with one of these names is renamed with a
+          # dim_ prefix instead of overwriting it or being overwritten.
+          RESERVED = {
+              "namespace", "value", "quantile", "__name__", "__type__", "_timestamp", "_hash",
+              "start_time", "flag", "cloud_provider", "cloud_account_id", "cloud_region",
+              "instrumentation_library_name", "instrumentation_library_version",
+          }
+
+
+          def _label(k):
+              return re.sub(r"[^a-z0-9_]", "_", k.lower())
+
+
+          def _attrs(d):
+              return [{"key": k, "value": {"stringValue": str(v)}} for k, v in d.items()]
+
+
+          def _to_otlp(lines):
+              # One CloudWatch JSON record per line. Each dimension becomes its
+              # own data point attribute: OpenObserve identifies a series by
+              # its top-level string labels, so a nested dimension map would
+              # merge every instance of a metric into one series.
+              resources = {}
+              for line in lines:
+                  r = json.loads(line)
+                  v = r["value"]
+                  quantiles = {0.0: v["min"], 1.0: v["max"]}
+                  for k, x in v.items():
+                      m = PERCENTILE.match(k)
+                      # Decimal: float("99.9") / 100 is 0.9990000000000001,
+                      # which would become the quantile label.
+                      q = float(Decimal(m.group(1)) / 100) if m else None
+                      if q is not None and 0.0 < q < 1.0:
+                          quantiles[q] = x
+                  labels = {"namespace": r["namespace"]}
+                  for k, x in r.get("dimensions", {}).items():
+                      labels["dim_" + k if _label(k) in RESERVED else k] = x
+                  point = {
+                      "attributes": _attrs(labels),
+                      "timeUnixNano": str(int(r["timestamp"]) * 1_000_000),
+                      "count": str(int(v["count"])),
+                      "sum": v["sum"],
+                      "quantileValues": [{"quantile": q, "value": quantiles[q]} for q in sorted(quantiles)],
+                  }
+                  res = resources.setdefault((r["account_id"], r["region"]), {})
+                  name = f'{r["namespace"]}/{r["metric_name"]}'
+                  res.setdefault((name, r.get("unit", "")), []).append(point)
+              return {
+                  "resourceMetrics": [
+                      {
+                          "resource": {
+                              "attributes": _attrs(
+                                  {"cloud.provider": "aws", "cloud.account.id": acct, "cloud.region": region}
+                              )
+                          },
+                          "scopeMetrics": [
+                              {
+                                  "scope": {"name": "cloudwatch-metric-stream"},
+                                  "metrics": [
+                                      {"name": name, "unit": unit, "summary": {"dataPoints": points}}
+                                      for (name, unit), points in metrics.items()
+                                  ],
+                              }
+                          ],
+                      }
+                      for (acct, region), metrics in resources.items()
+                  ]
+              }
+
+
+          def _reply(status, request_id, error=None):
+              body = {"requestId": request_id, "timestamp": int(time.time() * 1000)}
+              if error:
+                  body["errorMessage"] = error[:1000]
+              return {
+                  "statusCode": status,
+                  "headers": {"Content-Type": "application/json"},
+                  "body": json.dumps(body),
+              }
+
+
+          def handler(event, context):
+              headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+              request_id = headers.get("x-amz-firehose-request-id", "")
+              # The function URL is public. This header check is a filter, not
+              # authentication (OpenObserve authenticates the access key): it
+              # turns away stray callers early and tells them nothing.
+              if headers.get("x-amz-firehose-source-arn") != SOURCE_ARN:
+                  return {"statusCode": 403, "body": ""}
+              access_key = headers.get("x-amz-firehose-access-key")
+              if not access_key:
+                  return _reply(401, request_id, "missing X-Amz-Firehose-Access-Key")
+
+              raw = event.get("body") or ""
+              raw = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode()
+              try:
+                  payload = json.loads(raw)
+                  request_id = payload.get("requestId", request_id)
+                  lines = []
+                  for r in payload.get("records", []):
+                      lines.extend(l for l in base64.b64decode(r["data"]).decode().splitlines() if l.strip())
+                  otlp = _to_otlp(lines)
+              except (ValueError, KeyError, IndexError, TypeError, AttributeError) as e:
+                  print(f"bad Firehose payload: {e!r}")
+                  return _reply(400, request_id, f"bad Firehose payload: {e!r}")
+
+              if not otlp["resourceMetrics"]:
+                  return _reply(200, request_id)
+
+              req = urllib.request.Request(
+                  TARGET,
+                  data=gzip.compress(json.dumps(otlp).encode()),
+                  method="POST",
+                  headers={
+                      "Authorization": "Basic " + access_key,
+                      "Content-Type": "application/json",
+                      "Content-Encoding": "gzip",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=50) as resp:
+                      detail = resp.read().decode("utf-8", "replace")
+                      # 206 carries the points OpenObserve rejected: metrics it
+                      # could not decode, or a failed pipeline batch.
+                      if resp.status != 200:
+                          print(f"OpenObserve returned {resp.status}: {detail}")
+              except urllib.error.HTTPError as e:
+                  detail = e.read().decode("utf-8", "replace")
+                  print(f"OpenObserve returned {e.code}: {detail}")
+                  # Always 502: Firehose drops a batch answered with 413 without
+                  # backing it up to S3, and retries any other failure.
+                  return _reply(502, request_id, f"OpenObserve returned {e.code}: {detail}")
+              except (urllib.error.URLError, TimeoutError) as e:
+                  print(f"OpenObserve unreachable: {e}")
+                  return _reply(502, request_id, f"OpenObserve unreachable: {e}")
+              return _reply(200, request_id)
+
+  # Firehose's HTTP endpoint destination needs a public HTTPS URL. OpenObserve
+  # authenticates the data with the forwarded access key; the relay also turns
+  # away requests without this stack's delivery stream ARN. No reserved
+  # concurrency cap: setting one fails the deploy on accounts with a low
+  # Lambda concurrency limit.
+  RelayFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt RelayFunction.Arn
+      AuthType: NONE
+
+  # A public function URL needs both permissions.
+  RelayUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RelayFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  RelayInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RelayFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
 
   # IAM Role for CloudWatch Metrics Stream
   # No explicit RoleName — as a nested stack under aws_complete, the parent
@@ -123,21 +371,33 @@ Resources:
       RoleArn: !GetAtt MetricsStreamRole.Arn
 #      IncludeFilters:
 #        - Namespace: "AWS/*"
-      OutputFormat: opentelemetry1.0
+      # json, not opentelemetry1.0: it carries dimensions as a flat map,
+      # which the relay turns into one label per dimension.
+      OutputFormat: json
 
   # Kinesis Firehose Delivery Stream
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
+    DependsOn:
+      - RelayUrlInvokePermission
+      - RelayInvokePermission
     Properties:
+      # Fixed name so the relay can check the source ARN Firehose sends; the
+      # stack UUID keeps it unique and under the 64-character limit.
+      DeliveryStreamName: !Sub
+        - "o2-cw-metrics-${StackUuid}"
+        - StackUuid: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
       DeliveryStreamType: DirectPut
       HttpEndpointDestinationConfiguration:
         EndpointConfiguration:
-          Url: !Ref HttpEndpointUrl
+          Url: !GetAtt RelayFunctionUrl.FunctionUrl
           Name: !Ref HttpEndpointName
           AccessKey: !Ref AccessKey
+        # 1 MB, not 5: Firehose base64-encodes records inside a JSON body, and
+        # a Lambda function URL rejects request bodies over 6 MB.
         BufferingHints:
           IntervalInSeconds: 60
-          SizeInMBs: 5
+          SizeInMBs: 1
         RetryOptions:
           DurationInSeconds: 300
         S3BackupMode: FailedDataOnly
@@ -158,9 +418,12 @@ Outputs:
   KinesisFirehoseName:
     Description: Name of the Kinesis Firehose.
     Value: !Ref KinesisFirehose
+  RelayFunctionName:
+    Description: Lambda that converts Firehose records to OTLP metrics for OpenObserve. Its log group shows OpenObserve errors and partially rejected batches.
+    Value: !Ref RelayFunction
   BackupBucketName:
     Description: Name of the backup bucket being used (auto-generated if input was blank).
     Value: !If [CreateBackupBucket, !Ref BackupBucket, !Ref S3BackupBucket]
   WhereToFindData:
     Description: Where the CloudWatch metrics land in OpenObserve.
-    Value: "OpenObserve UI -> Logs -> stream 'cloudwatch_metrics' (the /aws/.../cloudwatch_metrics/_kinesis_firehose ingester writes to a Logs-type stream with that fixed name). Query with SQL, e.g. SELECT namespace, metric_name, value FROM cloudwatch_metrics WHERE namespace = 'AWS/EC2'."
+    Value: "OpenObserve UI -> Metrics. Each CloudWatch metric is a summary named <namespace>/<metric>, stored as three streams: e.g. AWS/EC2/CPUUtilization -> aws_ec2_cpuutilization (min and max as quantile=\"0\" / \"1\"), aws_ec2_cpuutilization_sum and aws_ec2_cpuutilization_count (names are lowercased unless ZO_FORMAT_STREAM_NAME_TO_LOWERCASE=false). Each CloudWatch dimension is its own lowercased label, plus namespace, cloud_account_id and cloud_region. Example PromQL: aws_ec2_cpuutilization_sum{instanceid=\"i-0abc\"} / aws_ec2_cpuutilization_count{instanceid=\"i-0abc\"}"
