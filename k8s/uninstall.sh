@@ -272,7 +272,7 @@ if [ "$REMOVE_OTEL_OPERATOR" = true ]; then
     # Check if operator is installed
     if kubectl get namespace opentelemetry-operator-system &>/dev/null; then
         # Remove operator resources
-        if kubectl delete -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.115.0/opentelemetry-operator.yaml --timeout=60s 2>/dev/null; then
+        if kubectl delete -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v${OTEL_OPERATOR_VERSION:-0.161.0}/opentelemetry-operator.yaml --ignore-not-found --timeout=60s 2>/dev/null; then
             print_success "OpenTelemetry Operator removed"
         else
             print_warning "Failed to remove OpenTelemetry Operator automatically"

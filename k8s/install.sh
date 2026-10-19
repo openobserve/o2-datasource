@@ -10,7 +10,7 @@ set -e
 # Pin versions for reproducibility; allow overrides via environment variables
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.20.0}"
 PROMETHEUS_OPERATOR_VERSION="${PROMETHEUS_OPERATOR_VERSION:-v0.77.1}"
-OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.138.0}"
+OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.161.0}"
 
 # ─── Network / Retry Settings ─────────────────────────────────────────────────
 # Controls how many times failed network calls are retried and how long to wait
@@ -144,7 +144,7 @@ Optional:
 Environment Variables:
     CERT_MANAGER_VERSION     cert-manager version (default: v1.20.0)
     PROMETHEUS_OPERATOR_VERSION  Prometheus operator version (default: v0.77.1)
-    OTEL_OPERATOR_VERSION    OpenTelemetry operator version (default: 0.138.0)
+    OTEL_OPERATOR_VERSION    OpenTelemetry operator version (default: 0.161.0)
     RETRY_COUNT             Number of retries for network operations (default: 3)
     RETRY_DELAY             Delay between retries in seconds (default: 5)
     OPERATION_TIMEOUT       Timeout for operations in seconds (default: 300)
@@ -594,9 +594,9 @@ if [ "$SKIP_OTEL_OPERATOR" = false ]; then
         RESOURCES_CREATED+=("OpenTelemetry Operator")
         print_success "OpenTelemetry operator installed"
 
-        # Wait for the operator's controller-manager deployment to become Available
+        # rollout status, not wait: on an upgrade the old pod is already Available
         print_info "Waiting for OpenTelemetry operator to be ready..."
-        if kubectl wait --for=condition=Available --timeout=${OPERATION_TIMEOUT}s -n opentelemetry-operator-system deployment/opentelemetry-operator-controller-manager 2>/dev/null; then
+        if kubectl rollout status --timeout=${OPERATION_TIMEOUT}s -n opentelemetry-operator-system deployment/opentelemetry-operator-controller-manager 2>/dev/null; then
             print_success "OpenTelemetry operator deployment is ready"
         else
             # Operator might be in different namespace or different name
