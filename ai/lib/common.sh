@@ -127,6 +127,11 @@ cleanup_on_error() {
 # but install_error_trap below replaces the EXIT trap — so we re-do the
 # bootstrap cleanup here. macOS mktemp writes to /var/folders/, Linux to /tmp/.
 cleanup_on_exit() {
+    # Capture the script's real exit status and re-exit with it below. On
+    # bash 3.2 (macOS /bin/bash) the status of the LAST command in an EXIT
+    # trap silently becomes the script's exit status — without this, the
+    # trailing `[ -f ... ]` test made every installer exit 1 even on success.
+    local exit_code=$?
     if [ -n "${COMMON_SH:-}" ] && [ -f "$COMMON_SH" ]; then
         case "$COMMON_SH" in
             /tmp/*|/var/folders/*) rm -f "$COMMON_SH" ;;
@@ -135,6 +140,7 @@ cleanup_on_exit() {
     for f in "${TEMP_FILES[@]:-}"; do
         [ -f "$f" ] && rm -f "$f"
     done
+    exit "$exit_code"
 }
 
 # Caller installs the trap via:  install_error_trap
