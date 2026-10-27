@@ -38,14 +38,21 @@ What it does, in order:
    - Downloads `otelcol-contrib` v0.158.0 (override with `O2_OTELCOL_VERSION`) for your OS/arch.
    - Checks it against the release's published `<asset>.sha256`.
    - Installs it to `/usr/local/bin/otelcol-contrib`. If that version is already there, this step is skipped.
+     If a different version is there, the script warns before replacing it, because every collector on the host
+     that uses that binary runs the new version after its next restart. It asks on the terminal; with no
+     terminal, it continues.
 4. **Config.**
    - Renders `/etc/otelcol-o2/<name>/config.yaml`, plus `dbm-config.yaml` with `--dbm`.
+   - Writes `telemetry.yaml`, which turns off the collector's self-metrics endpoint (by default every
+     collector binds `localhost:8888`). This lets several instances, for example Postgres and Redis, run on
+     one host.
    - Writes the credentials to `/etc/otelcol-o2/<name>/env`.
    - Runs `otelcol-contrib validate` before anything live is replaced.
 5. **Service.** Installs a systemd unit `otelcol-o2-<name>.service` on Linux, or a launchd daemon
    `ai.openobserve.otelcol-o2.<name>` on macOS, then (re)starts it.
 6. **Health check.** The service must stay active with no restarts for about 20s. On failure the script prints
-   the last logs. If the collector is up but logged receiver errors (bad password, missing grant), it shows them.
+   the last logs and exits non-zero; the files stay in place for debugging. If the collector is up but logged
+   receiver errors (bad password, missing grant), it shows them.
 7. **Summary.** Prints the config path, status, restart and uninstall commands.
 
 Re-running with the same name is safe. The script rewrites the config and credentials and restarts the
@@ -54,7 +61,8 @@ service. Adding `--dbm` on a re-run turns Database Monitoring on; leaving it off
 ### Containers / hosts without systemd
 
 ```bash
-sudo O2_DB_PASSWORD='...' bash o2-db-install.sh --db=redis --o2-url=... --org-id=... --access-key=... --no-service
+sudo bash o2-db-install.sh --db=redis --o2-url=... --org-id=... --access-key=... --no-service \
+  --password-file=/root/redis-password   # or answer the prompt
 # then, in the foreground (e.g. as the container command):
 sudo /etc/otelcol-o2/redis-localhost-6379/run.sh
 ```
@@ -73,9 +81,9 @@ collector. It then prints that foreground command instead of installing a servic
 | `--database=` | `postgres` (postgres), `mysql` (mysql, mariadb), `master` (sqlserver DBM) | Database the receivers connect to |
 | `--o2-url=` | required | `http://` or `https://`, without a trailing path |
 | `--org-id=` | required | OpenObserve organization |
-| `--access-key=` | required | `echo -n 'email:passcode' \| base64` |
+| `--access-key=` | required | `echo -n 'email:passcode' \| base64`. You can also use `--access-key-file=PATH` (first line) or the `O2_ACCESS_KEY` env var; `--access-key` wins if more than one is given |
 | `--dbm` | off | Also install the Database Monitoring config (postgres, mysql, mariadb, sqlserver) |
-| `--log-path=` | `/var/log/postgresql/postgresql*.log` (postgres), `/var/log/mysql/error.log` (mysql, mariadb) | Server log the DBM deadlock recipe tails |
+| `--log-path=` | `/var/log/postgresql/postgresql*.log` (postgres), `/var/log/mysql/error.log` (mysql, mariadb) | Server log the DBM deadlock recipe tails. On RHEL/CentOS/Fedora, MariaDB logs to `/var/log/mariadb/mariadb.log` |
 | `--name=` | `<db>-<host>-<port>` | Instance name, lowercased; anything outside `[a-z0-9-]` becomes `-` |
 | `--password-file=` | | Password is read from the first line of this file |
 | `--tls` | off | mongodb only: connect with verified TLS (the card's default is a plaintext connection) |
@@ -86,11 +94,12 @@ collector. It then prints that foreground command instead of installing a servic
 
 **Password source**, first match wins:
 
-1. The `O2_DB_PASSWORD` environment variable. `sudo` drops your environment, so use
-   `sudo O2_DB_PASSWORD=... bash o2-db-install.sh ...`.
-2. `--password-file=PATH`.
-3. A hidden prompt on `/dev/tty`. This also works under `curl ... | bash`. For redis you can leave it empty to
-   connect without AUTH.
+1. The `O2_DB_PASSWORD` environment variable, for automation. `sudo` drops your environment, so export it
+   in a root shell, or pass it through with `sudo --preserve-env=O2_DB_PASSWORD`. Don't use
+   `sudo O2_DB_PASSWORD=... bash`, which puts the password in `sudo`'s command line, where `ps` can see it.
+2. `--password-file=PATH`. This is the recommended way for unattended installs; keep the file mode 600.
+3. A hidden prompt on `/dev/tty`. This is the recommended way interactively, and it also works under
+   `curl ... | bash`. For redis you can leave it empty to connect without AUTH.
 
 The password is never accepted as a flag.
 
@@ -157,7 +166,7 @@ The collector connects over TCP. If it runs on another host, create the user for
 SET PERSIST innodb_print_all_deadlocks = ON;
 ```
 
-`--log-path` must point at the MySQL error log.
+`--log-path` must point at the MySQL error log (`SELECT @@log_error;`).
 
 ### MariaDB
 
@@ -169,6 +178,14 @@ SET GLOBAL innodb_print_all_deadlocks = ON;
 -- MariaDB has no SET PERSIST: add this to my.cnf ([mysqld] section) so the
 -- setting survives a restart, otherwise deadlock history stops silently.
 --   innodb_print_all_deadlocks = ON
+```
+
+`--log-path` must point at the MariaDB error log (`SELECT @@log_error;`). The default is
+`/var/log/mysql/error.log` (Debian/Ubuntu). On RHEL/CentOS/Fedora it is usually
+`/var/log/mariadb/mariadb.log`:
+
+```bash
+sudo bash o2-db-install.sh --db=mariadb --dbm --log-path=/var/log/mariadb/mariadb.log ...
 ```
 
 `--db=mysql` against MariaDB also works for metrics. Its MySQL 8 DBM recipes fail against MariaDB, because

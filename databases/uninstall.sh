@@ -67,6 +67,17 @@ $(list_instances | sed 's/^/    /')
 EOF
 }
 
+# Same transformation install.sh applies to --name (lower-case, anything
+# outside [a-z0-9-] becomes '-'), so `--name=PG_Main` finds `pg-main`.
+# Keep in sync with sanitize_name in install.sh.
+sanitize_name() {
+    local name
+    name=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | tr -s '-')
+    name="${name#-}"
+    name="${name%-}"
+    printf '%s' "$name"
+}
+
 # Names of every installed instance (one per line)
 list_instances() {
     local dir
@@ -113,10 +124,18 @@ if [ -n "$INSTANCE_NAME" ] && [ "$REMOVE_ALL" = true ]; then
     exit 1
 fi
 
-# Same character set install.sh produces; also stops "../" from escaping CONFIG_ROOT
-if [ -n "$INSTANCE_NAME" ] && [[ ! "$INSTANCE_NAME" =~ ^[a-z0-9-]+$ ]]; then
-    print_error "Invalid --name=$INSTANCE_NAME (expected lowercase letters, digits and '-')"
-    exit 1
+# Sanitize exactly like install.sh, then re-check the result: the character
+# set also stops "../" from escaping CONFIG_ROOT
+if [ -n "$INSTANCE_NAME" ]; then
+    requested_name="$INSTANCE_NAME"
+    INSTANCE_NAME=$(sanitize_name "$INSTANCE_NAME")
+    if [[ ! "$INSTANCE_NAME" =~ ^[a-z0-9-]+$ ]]; then
+        print_error "Invalid --name=$requested_name (nothing left after sanitizing)"
+        exit 1
+    fi
+    if [ "$INSTANCE_NAME" != "$requested_name" ]; then
+        print_info "Instance name sanitized to: $INSTANCE_NAME"
+    fi
 fi
 
 if [ "$(id -u)" -ne 0 ]; then

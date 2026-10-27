@@ -12,7 +12,8 @@
 #
 # The database password is NEVER a flag. It comes from O2_DB_PASSWORD, from
 # --password-file, or from a hidden prompt on the terminal (/dev/tty, so the
-# prompt also works when the script itself arrives on stdin).
+# prompt also works when the script itself arrives on stdin). The OpenObserve
+# access key may come from --access-key, --access-key-file or O2_ACCESS_KEY.
 #
 # Supported: Linux (systemd) and macOS (launchd), amd64 and arm64.
 # Must stay bash 3.2 compatible (macOS /bin/bash): no associative arrays,
@@ -56,6 +57,7 @@ DB_NAME=""
 O2_URL=""
 ORG_ID=""
 ACCESS_KEY=""
+ACCESS_KEY_FILE=""
 ENABLE_DBM=false
 LOG_PATH=""
 INSTANCE_NAME=""
@@ -187,6 +189,7 @@ Required Options:
     --o2-url=URL             OpenObserve instance URL (e.g., https://cloud.openobserve.ai)
     --org-id=ID              OpenObserve organization ID
     --access-key=KEY         Base64 encoded access key (email:passcode)
+                             (or --access-key-file=PATH, or the O2_ACCESS_KEY env var)
 
 Database Connection:
     --host=HOST              Database host (default: localhost)
@@ -215,9 +218,12 @@ Installation:
     --help                   Show this help message
 
 Password Source (first match wins; never a flag):
-    1. O2_DB_PASSWORD environment variable (use: sudo O2_DB_PASSWORD=... bash $0 ...)
-    2. --password-file=PATH
-    3. Hidden prompt on the terminal (redis: may be left empty for no AUTH)
+    1. O2_DB_PASSWORD environment variable (for automation; export it in a root
+       shell or pass it through with sudo --preserve-env=O2_DB_PASSWORD, never
+       as "sudo O2_DB_PASSWORD=... bash", which puts it in sudo's argv)
+    2. --password-file=PATH (recommended for unattended installs; chmod 600)
+    3. Hidden prompt on the terminal (recommended interactively; redis: may be
+       left empty for no AUTH)
 
 Environment Variables:
     O2_OTELCOL_VERSION       otelcol-contrib version (default: 0.158.0)
@@ -306,6 +312,9 @@ for arg in "$@"; do
         --access-key=*)
             ACCESS_KEY="${arg#*=}"
             ;;
+        --access-key-file=*)
+            ACCESS_KEY_FILE="${arg#*=}"
+            ;;
         --dbm)
             ENABLE_DBM=true
             ;;
@@ -347,6 +356,23 @@ for arg in "$@"; do
     esac
 done
 
+# ─── Access Key Source ────────────────────────────────────────────────────────
+# --access-key wins, then --access-key-file, then the O2_ACCESS_KEY env var.
+# The file/env forms keep the key out of shell history and process listings.
+ACCESS_KEY_SOURCE="--access-key"
+if [ -z "$ACCESS_KEY" ] && [ -n "$ACCESS_KEY_FILE" ]; then
+    if [ ! -r "$ACCESS_KEY_FILE" ]; then
+        print_error "Cannot read --access-key-file=$ACCESS_KEY_FILE"
+        exit 1
+    fi
+    IFS= read -r ACCESS_KEY < "$ACCESS_KEY_FILE" || true
+    ACCESS_KEY="${ACCESS_KEY%$'\r'}"
+    ACCESS_KEY_SOURCE="--access-key-file"
+elif [ -z "$ACCESS_KEY" ] && [ -n "${O2_ACCESS_KEY:-}" ]; then
+    ACCESS_KEY="$O2_ACCESS_KEY"
+    ACCESS_KEY_SOURCE="O2_ACCESS_KEY"
+fi
+
 # ─── Required Parameter Validation ────────────────────────────────────────────
 # Fail fast with a clear message if any required flag was not provided
 print_info "Validating parameters..."
@@ -354,7 +380,11 @@ for required in DB O2_URL ORG_ID ACCESS_KEY; do
     if [ -z "${!required}" ]; then
         flag=$(printf '%s' "$required" | tr '[:upper:]_' '[:lower:]-')
         [ "$required" = "O2_URL" ] && flag="o2-url"
-        print_error "Missing required parameter: --$flag"
+        if [ "$required" = "ACCESS_KEY" ]; then
+            print_error "Missing access key: pass --access-key, --access-key-file or set O2_ACCESS_KEY"
+        else
+            print_error "Missing required parameter: --$flag"
+        fi
         usage
         exit 1
     fi
@@ -485,6 +515,7 @@ INSTANCE_NAME="$SANITIZED_NAME"
 INSTANCE_DIR="$CONFIG_ROOT/$INSTANCE_NAME"
 CONFIG_FILE="$INSTANCE_DIR/config.yaml"
 DBM_CONFIG_FILE="$INSTANCE_DIR/dbm-config.yaml"
+TELEMETRY_CONFIG_FILE="$INSTANCE_DIR/telemetry.yaml"
 ENV_FILE="$INSTANCE_DIR/env"
 RUN_SCRIPT="$INSTANCE_DIR/run.sh"
 SYSTEMD_UNIT="otelcol-o2-$INSTANCE_NAME.service"
@@ -647,25 +678,27 @@ fi
 
 # ─── Preflight: Database Login ────────────────────────────────────────────────
 # Optional: only when the engine's CLI is installed. Credentials are passed via
-# the client's own environment variable, never on the command line (ps-visible).
+# the client's own environment variable as a bash prefix assignment (VAR=x cmd),
+# never on a command line: `env VAR=x cmd` would put the password in env's argv,
+# which any user can read in ps while it runs.
 # A failure here only warns; the collector reports the same error in its logs.
 login_check() {
     case "$DB" in
         postgres)
-            env PGPASSWORD="$DB_PASSWORD" PGCONNECT_TIMEOUT=5 \
+            PGPASSWORD="$DB_PASSWORD" PGCONNECT_TIMEOUT=5 \
                 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -w -tAc "SELECT 1"
             ;;
         mysql|mariadb)
-            env MYSQL_PWD="$DB_PASSWORD" "$DB_CLIENT" --protocol=TCP --connect-timeout=5 \
+            MYSQL_PWD="$DB_PASSWORD" "$DB_CLIENT" --protocol=TCP --connect-timeout=5 \
                 -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -e "SELECT 1" "$DB_NAME"
             ;;
         sqlserver)
-            env SQLCMDPASSWORD="$DB_PASSWORD" \
+            SQLCMDPASSWORD="$DB_PASSWORD" \
                 sqlcmd -S "$DB_HOST,$DB_PORT" -U "$DB_USER" -C -l 5 -Q "SELECT 1"
             ;;
         mongodb)
             # Build the URI inside mongosh from env vars so the password never hits argv
-            env O2_CHECK_PASSWORD="$DB_PASSWORD" O2_CHECK_USER="$DB_USER" \
+            O2_CHECK_PASSWORD="$DB_PASSWORD" O2_CHECK_USER="$DB_USER" \
                 O2_CHECK_HOSTPORT="$DB_HOST:$DB_PORT" O2_CHECK_TLS="$MONGO_TLS" \
                 mongosh --nodb --quiet --eval '
                     const e = process.env;
@@ -679,7 +712,7 @@ login_check() {
             # An empty REDISCLI_AUTH still sends AUTH, so only set it with a password
             local reply
             if [ -n "$DB_PASSWORD" ]; then
-                reply=$(env REDISCLI_AUTH="$DB_PASSWORD" redis-cli -h "$DB_HOST" -p "$DB_PORT" PING 2>&1)
+                reply=$(REDISCLI_AUTH="$DB_PASSWORD" redis-cli -h "$DB_HOST" -p "$DB_PORT" PING 2>&1)
             else
                 reply=$(redis-cli -h "$DB_HOST" -p "$DB_PORT" PING 2>&1)
             fi
@@ -750,7 +783,7 @@ print_info "  Database Monitor:  $ENABLE_DBM"
 [ "$ENABLE_DBM" = true ] && [ -n "$LOG_PATH" ] && print_info "  Deadlock log:      $LOG_PATH"
 print_info "  Endpoint:          $ENDPOINT"
 print_info "  Organization ID:   $ORG_ID"
-print_info "  Access Key:        $(redact_secret "$ACCESS_KEY")"
+print_info "  Access Key:        $(redact_secret "$ACCESS_KEY") from $ACCESS_KEY_SOURCE"
 print_info "  Instance name:     $INSTANCE_NAME"
 print_info "  Collector:         otelcol-contrib $OTELCOL_VERSION ($OS/$ARCH)"
 print_info "  Service:           $([ "$NO_SERVICE" = true ] && echo "none (--no-service)" || echo "$SERVICE_MANAGER")"
@@ -2172,11 +2205,18 @@ __O2_TPL_EOF__
 }
 
 # ─── Config Rendering ─────────────────────────────────────────────────────────
-# Replaces every occurrence of $2 with $3 in $1. Both are quoted so bash 5.2's
-# patsub_replacement never treats '&' in a value as "the matched text".
+# Replaces every occurrence of $2 with $3 in $1, literally. Deliberately NOT
+# ${text//"$from"/"$to"}: bash <= 4.2 (macOS /bin/bash 3.2) keeps the quotes
+# of a quoted replacement in the output, and bash 5.2's patsub_replacement
+# turns '&' into the matched text. Prefix/suffix removal with a quoted pattern
+# is literal and behaves the same on every bash since 3.2.
 replace_all() {
-    local text="$1" from="$2" to="$3"
-    printf '%s' "${text//"$from"/"$to"}"
+    local text="$1" from="$2" to="$3" out=""
+    while [[ "$text" == *"$from"* ]]; do
+        out="$out${text%%"$from"*}$to"
+        text="${text#*"$from"}"
+    done
+    printf '%s' "$out$text"
 }
 
 # Replaces exactly one known line from a card template, failing loudly if the
@@ -2244,15 +2284,32 @@ render_dbm_config() {
     render_config "$("tpl_dbm_$DB")"
 }
 
+# Per-instance collector self-telemetry. By default every otelcol-contrib serves
+# its own metrics on localhost:8888, so a second instance on the same host dies
+# with "address already in use". Nothing here scrapes those metrics, so turn
+# the endpoint off; the collector's logs still go to journald / the log file.
+render_telemetry_config() {
+    cat << '__O2_TPL_EOF__'
+# Generated by databases/install.sh: no fixed self-telemetry port, so several
+# database collectors can run on one host.
+service:
+  telemetry:
+    metrics:
+      level: none
+__O2_TPL_EOF__
+}
+
 # Escapes a value for a double-quoted KEY="value" line. The escape set
 # (\ " $ `) is the one both bash and systemd's EnvironmentFile parser honour,
 # so the same file is read identically by systemd and by run.sh.
 env_quote() {
     local v="$1"
-    v="${v//\\/\\\\}"
-    v="${v//\"/\\\"}"
-    v="${v//\$/\\\$}"
-    v="${v//\`/\\\`}"
+    # Backslash first, so the escapes added below are not doubled again.
+    # replace_all, not ${v//...}: see its comment (bash 3.2 differs).
+    v=$(replace_all "$v" "\\" "\\\\")
+    v=$(replace_all "$v" '"' '\"')
+    v=$(replace_all "$v" '$' '\$')
+    v=$(replace_all "$v" '`' '\`')
     printf '"%s"' "$v"
 }
 
@@ -2296,6 +2353,7 @@ write_run_script() {
     if [ "$ENABLE_DBM" = true ]; then
         dbm_arg=" --config=file:$DBM_CONFIG_FILE"
     fi
+    dbm_arg="$dbm_arg --config=file:$TELEMETRY_CONFIG_FILE"
     cat > "$file" << EOF
 #!/bin/bash
 # OpenObserve database collector for $INSTANCE_NAME ($DB). Generated by databases/install.sh.
@@ -2314,6 +2372,7 @@ STAGE_DIR="$WORK_DIR/stage"
 mkdir -p "$STAGE_DIR"
 print_info "Rendering collector config for $DB..."
 render_metrics_config > "$STAGE_DIR/config.yaml"
+render_telemetry_config > "$STAGE_DIR/telemetry.yaml"
 if [ "$ENABLE_DBM" = true ]; then
     render_dbm_config > "$STAGE_DIR/dbm-config.yaml"
 fi
@@ -2329,6 +2388,7 @@ validate_configs() {
     if [ "$ENABLE_DBM" = true ]; then
         args+=("--config=file:$STAGE_DIR/dbm-config.yaml")
     fi
+    args+=("--config=file:$STAGE_DIR/telemetry.yaml")
     (
         if [ -f "$STAGE_DIR/env" ]; then
             set -a
@@ -2402,7 +2462,12 @@ if [[ "$installed_version" == *" $OTELCOL_VERSION"* ]]; then
     print_success "otelcol-contrib $OTELCOL_VERSION already installed at $BIN_PATH"
 else
     if [ -n "$installed_version" ]; then
-        print_info "Replacing existing collector ($installed_version)"
+        # The binary is shared: every collector on this host (other databases,
+        # or one installed by hand) switches to the new version on its next restart
+        print_warning "$BIN_PATH is already installed as: $installed_version"
+        print_warning "It will be replaced with $OTELCOL_VERSION. Every collector on this host that uses $BIN_PATH"
+        print_warning "runs the new version after its next restart (the Database Monitoring configs need >= 0.148.0)."
+        confirm_or_exit "Replace it?"
     fi
     asset="otelcol-contrib_${OTELCOL_VERSION}_${OS}_${ARCH}.tar.gz"
     asset_url="$OTELCOL_RELEASE_BASE/v$OTELCOL_VERSION/$asset"
@@ -2471,6 +2536,7 @@ mkdir -p "$INSTANCE_DIR"
 chmod 755 "$CONFIG_ROOT"
 chmod 750 "$INSTANCE_DIR"
 install -m 640 "$STAGE_DIR/config.yaml" "$CONFIG_FILE"
+install -m 640 "$STAGE_DIR/telemetry.yaml" "$TELEMETRY_CONFIG_FILE"
 if [ "$ENABLE_DBM" = true ]; then
     install -m 640 "$STAGE_DIR/dbm-config.yaml" "$DBM_CONFIG_FILE"
 elif [ -f "$DBM_CONFIG_FILE" ]; then
@@ -2488,6 +2554,7 @@ CONFIG_ARGS="--config=file:$CONFIG_FILE"
 if [ "$ENABLE_DBM" = true ]; then
     CONFIG_ARGS="$CONFIG_ARGS --config=file:$DBM_CONFIG_FILE"
 fi
+CONFIG_ARGS="$CONFIG_ARGS --config=file:$TELEMETRY_CONFIG_FILE"
 
 # ─── Step 3: Install Service ──────────────────────────────────────────────────
 echo ""
@@ -2560,10 +2627,25 @@ install_launchd_service() {
 EOF
     chmod 644 "$LAUNCHD_PLIST"
     RESOURCES_CREATED+=("launchd daemon: $LAUNCHD_PLIST")
-    # bootout first so a re-run reloads the plist and restarts the collector
+    # bootout first so a re-run reloads the plist and restarts the collector.
+    # bootout returns before launchd has finished tearing the job down, and a
+    # bootstrap in that window fails with "5: Input/output error", so retry.
     launchctl bootout "system/$LAUNCHD_LABEL" 2>/dev/null || true
-    if ! launchctl bootstrap system "$LAUNCHD_PLIST" 2>/dev/null; then
-        launchctl load -w "$LAUNCHD_PLIST"
+    local attempt=1 bootstrapped=false
+    while [ "$attempt" -le 10 ]; do
+        if launchctl bootstrap system "$LAUNCHD_PLIST" 2>/dev/null; then
+            bootstrapped=true
+            break
+        fi
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    if [ "$bootstrapped" = false ]; then
+        # Legacy interface as a last resort (older macOS)
+        if ! launchctl load -w "$LAUNCHD_PLIST"; then
+            print_error "launchctl could not load $LAUNCHD_PLIST"
+            return 1
+        fi
     fi
     launchctl enable "system/$LAUNCHD_LABEL" 2>/dev/null || true
     launchctl kickstart -k "system/$LAUNCHD_LABEL" 2>/dev/null || true
@@ -2681,5 +2763,11 @@ if [ "$ENABLE_DBM" = true ] && [ "$DB" = "postgres" ]; then
 fi
 print_success "Check your OpenObserve dashboard for incoming data: $ENDPOINT"
 
-# Deregister the error trap now that the script completed successfully
+# Deregister the error trap now that the script completed
 trap - ERR INT TERM
+
+# An installed-but-unhealthy collector is a failure for whoever runs this
+# (CI, config management): the files stay in place for debugging
+if [ "$healthy" != true ]; then
+    exit 1
+fi
